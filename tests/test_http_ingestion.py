@@ -59,6 +59,7 @@ def test_retrieve_rss_feed_applies_bounds_and_returns_typed_feed() -> None:
     assert feed.episodes[0].episode_id == "episode-1"
     assert len(requests) == 1
     assert requests[0].headers["accept"].startswith("application/rss+xml")
+    assert requests[0].headers["user-agent"].startswith("Podcast-Intelligence/")
     assert requests[0].extensions["timeout"] == {
         "connect": 1.5,
         "read": 4.0,

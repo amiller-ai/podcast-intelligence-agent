@@ -4,7 +4,7 @@ A personal application for turning podcast content into searchable, useful intel
 
 ## Project status
 
-Milestone 3 is complete with bounded, public-destination HTTP retrieval composed with safe RSS 2.0 parsing. It remains the current milestone until a proposed follow-on is explicitly approved. See the [`docs/ROADMAP.md`](docs/ROADMAP.md) source of truth for completion evidence and proposed work.
+Milestone 4 is complete with exact Spotify-to-RSS episode resolution and ordered transcript-source discovery. It remains the current milestone until the guarded audio-transcription fallback is explicitly approved. See the [`docs/ROADMAP.md`](docs/ROADMAP.md) source of truth for completion evidence and proposed work.
 
 ## Development setup
 

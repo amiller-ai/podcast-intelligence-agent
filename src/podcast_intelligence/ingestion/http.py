@@ -116,6 +116,7 @@ def _retrieve_payload(
             current_url,
             headers={
                 "Accept": "application/rss+xml, application/xml;q=0.9, text/xml;q=0.8",
+                "User-Agent": "Podcast-Intelligence/0.1 (+personal feed reader)",
             },
         ) as response:
             if response.status_code in _REDIRECT_STATUSES:

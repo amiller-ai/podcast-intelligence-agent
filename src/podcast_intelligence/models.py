@@ -5,6 +5,16 @@ from datetime import datetime
 
 
 @dataclass(frozen=True, slots=True)
+class TranscriptReference:
+    """Publisher-supplied reference to an episode transcript resource."""
+
+    url: str
+    media_type: str
+    language: str | None = None
+    relation: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class PodcastEpisode:
     """Normalized metadata for one podcast episode."""
 
@@ -16,6 +26,7 @@ class PodcastEpisode:
     audio_url: str | None = None
     audio_media_type: str | None = None
     duration_seconds: int | None = None
+    transcript_references: tuple[TranscriptReference, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

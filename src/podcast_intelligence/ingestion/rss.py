@@ -8,7 +8,9 @@ from xml.etree.ElementTree import Element, ParseError
 from defusedxml import DefusedXmlException
 from defusedxml.ElementTree import fromstring
 
-from podcast_intelligence.models import PodcastEpisode, PodcastFeed
+from podcast_intelligence.models import PodcastEpisode, PodcastFeed, TranscriptReference
+
+_PODCAST_NAMESPACE = "https://podcastindex.org/namespace/1.0"
 
 
 class RssFeedParseError(ValueError):
@@ -73,7 +75,28 @@ def _parse_episode(item: Element, *, index: int) -> PodcastEpisode:
         audio_url=audio_url,
         audio_media_type=audio_media_type,
         duration_seconds=_parse_duration(_text(item, "duration")),
+        transcript_references=_parse_transcript_references(item),
     )
+
+
+def _parse_transcript_references(item: Element) -> tuple[TranscriptReference, ...]:
+    references: list[TranscriptReference] = []
+    for element in item:
+        if element.tag != f"{{{_PODCAST_NAMESPACE}}}transcript":
+            continue
+        url = _attribute(element, "url")
+        media_type = _attribute(element, "type")
+        if url is None or media_type is None:
+            continue
+        references.append(
+            TranscriptReference(
+                url=url,
+                media_type=media_type.lower(),
+                language=_attribute(element, "language"),
+                relation=_attribute(element, "rel"),
+            )
+        )
+    return tuple(references)
 
 
 def _episode_id(

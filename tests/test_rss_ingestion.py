@@ -117,3 +117,22 @@ def test_parse_rss_feed_accepts_xml_bytes() -> None:
     feed = parse_rss_feed(b"<rss><channel><title>Byte feed</title></channel></rss>")
 
     assert feed.title == "Byte feed"
+
+
+def test_parse_rss_feed_extracts_typed_podcasting_transcript_references() -> None:
+    feed = parse_rss_feed(
+        """<rss xmlns:podcast="https://podcastindex.org/namespace/1.0">
+        <channel><title>Transcript feed</title><item><title>Episode</title>
+        <podcast:transcript url="https://cdn.example.test/episode.vtt" type="TEXT/VTT"
+            language="en" rel="captions" />
+        <podcast:transcript url="https://cdn.example.test/missing-type" />
+        <transcript url="https://cdn.example.test/not-podcasting.txt" type="text/plain" />
+        </item></channel></rss>"""
+    )
+
+    assert len(feed.episodes[0].transcript_references) == 1
+    reference = feed.episodes[0].transcript_references[0]
+    assert reference.url == "https://cdn.example.test/episode.vtt"
+    assert reference.media_type == "text/vtt"
+    assert reference.language == "en"
+    assert reference.relation == "captions"

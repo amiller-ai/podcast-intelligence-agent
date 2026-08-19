@@ -38,8 +38,6 @@ Added provider-independent podcast models and safe RSS 2.0 parsing for feed and 
 - Runtime contract: no network access; unsafe XML entities are rejected
 - Validation: 23 offline tests passing at 98.5% coverage, Ruff, strict mypy, lockfile consistency, and package build
 
-## Current
-
 ### Milestone 3 — Guarded HTTP RSS retrieval
 
 Goal: retrieve a user-provided podcast RSS URL and pass its bounded XML payload to the existing parser without exposing the application to unrestricted network or memory use.
@@ -56,7 +54,7 @@ Acceptance criteria:
 - [x] Use an injected or mocked transport so the default test suite remains network-free.
 - [x] Pass all repository quality gates and a package build.
 
-Status: complete on 2026-08-19. This remains the single milestone under **Current** until the user approves promoting a proposed milestone.
+Status: complete on 2026-08-19.
 
 Completion evidence:
 
@@ -72,22 +70,57 @@ Out of scope:
 - OpenAI-based podcast analysis
 - User interface or deployment
 
+## Current
+
+### Milestone 4 — Episode resolution and transcript source discovery
+
+Goal: resolve a user-provided Spotify episode URL to the exact episode in its canonical RSS feed, then report the first viable transcript source without scraping Spotify audio or guessing across ambiguous matches.
+
+Acceptance criteria:
+
+- [x] Accept only canonical Spotify episode URLs and extract a validated episode ID.
+- [x] Resolve the episode title through Spotify's public oEmbed boundary without accepting or logging Spotify playback credentials.
+- [x] Discover candidate podcast episodes through an application-owned catalog boundary and require one unique normalized title match.
+- [x] Retrieve the candidate's canonical RSS feed through the existing guarded HTTP boundary and verify the catalog GUID exists in that feed.
+- [x] Parse typed Podcasting 2.0 `<podcast:transcript>` references from RSS episode metadata.
+- [x] Return typed episode identity, source provenance, and ordered transcript-resolution outcomes.
+- [x] Prefer an RSS transcript, preserve publisher-page and provider stages as explicit future adapter boundaries, and report when authorized audio transcription is required.
+- [x] Keep raw transcript text, audio download, Spotify playback URLs, generic webpage scraping, persistence, and model calls out of scope.
+- [x] Use injected or mocked transports so the default test suite remains deterministic and network-free.
+- [x] Pass all repository quality gates and a package build.
+
+Status: complete on 2026-08-19. This remains the single milestone under **Current** until the user approves promoting a proposed milestone.
+
+Completion evidence:
+
+- Identity contract: canonical Spotify episode URL to public oEmbed title, unique normalized Apple Podcasts catalog match, guarded canonical feed retrieval, and exact catalog-GUID verification in RSS
+- Resolution contract: typed Podcasting 2.0 transcript references; ordered RSS, publisher-page, provider, and authorized-audio outcomes without fetching transcript or audio content
+- Resource contract: metadata responses capped at 1,000,000 bytes and discovery feeds at 10,000,000 bytes, with explicit connection/read timeouts and the existing public-destination/redirect policy
+- Validation: 80 deterministic offline tests passed with 95.58% total coverage; Ruff formatting and linting, strict mypy, lockfile consistency, and package build all passed
+- Live application checks: none required; all application transports were mocked
+
+Privacy and retention contract:
+
+- Do not persist catalog responses, feed payloads, transcript content, or audio.
+- Do not log Spotify embed payloads, playback URLs, anonymous tokens, or raw episode descriptions.
+- Preserve only normalized identifiers and source URLs in returned domain models.
+
 ## Proposed
 
 These milestones are directional and require approval before becoming current.
 
-### Milestone 4 — Transcript acquisition
+### Milestone 5 — Guarded audio transcription fallback
 
-Select and implement the first transcript source. Prefer an existing transcript exposed by the feed before considering audio download and transcription. Define licensing, size, and retention behavior before storing transcript content.
+When earlier transcript resolvers return no usable source, retrieve an authorized RSS audio enclosure within explicit duration, byte, cost, and retention limits and transcribe it behind an application-owned boundary. Never download audio from Spotify. Normalize the result to the same transcript contract and delete temporary audio after use.
 
-### Milestone 5 — Structured podcast intelligence
+### Milestone 6 — Structured podcast intelligence
 
 Define an evaluated Structured Output contract for summaries, topics, people, claims, evidence, and actionable insights. Test the schema and failure behavior before scaling beyond one episode.
 
-### Milestone 6 — Local persistence and retrieval
+### Milestone 7 — Local persistence and retrieval
 
 Persist feed, episode, transcript, and analysis records locally with explicit migrations and idempotent updates. Add search only after the query requirements are defined.
 
-### Milestone 7 — Personal application interface
+### Milestone 8 — Personal application interface
 
 Choose a minimal interface based on the validated workflow, then expose ingestion status, episode selection, analysis results, and errors without coupling the UI to provider SDK objects.
