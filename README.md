@@ -4,7 +4,7 @@ A personal application for turning podcast content into searchable, useful intel
 
 ## Project status
 
-Milestone 2 is complete with typed podcast models and safe, offline RSS 2.0 parsing. Milestone 3—guarded HTTP RSS retrieval—is current. See the [`docs/ROADMAP.md`](docs/ROADMAP.md) source of truth for acceptance criteria and proposed follow-on work.
+Milestone 3 is complete with bounded, public-destination HTTP retrieval composed with safe RSS 2.0 parsing. It remains the current milestone until a proposed follow-on is explicitly approved. See the [`docs/ROADMAP.md`](docs/ROADMAP.md) source of truth for completion evidence and proposed work.
 
 ## Development setup
 

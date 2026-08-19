@@ -111,3 +111,9 @@ def test_parse_rss_feed_rejects_xml_entities() -> None:
 
     with pytest.raises(RssFeedParseError, match="not safe, well-formed XML"):
         parse_rss_feed(xml)
+
+
+def test_parse_rss_feed_accepts_xml_bytes() -> None:
+    feed = parse_rss_feed(b"<rss><channel><title>Byte feed</title></channel></rss>")
+
+    assert feed.title == "Byte feed"

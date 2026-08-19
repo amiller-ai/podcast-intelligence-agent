@@ -15,7 +15,7 @@ class RssFeedParseError(ValueError):
     """Raised when input is not a structurally valid RSS 2.0 podcast feed."""
 
 
-def parse_rss_feed(xml_text: str) -> PodcastFeed:
+def parse_rss_feed(xml_text: str | bytes) -> PodcastFeed:
     """Parse RSS 2.0 XML into normalized, immutable podcast models."""
 
     if not xml_text.strip():

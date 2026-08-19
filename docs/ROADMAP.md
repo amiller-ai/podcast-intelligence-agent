@@ -46,15 +46,24 @@ Goal: retrieve a user-provided podcast RSS URL and pass its bounded XML payload 
 
 Acceptance criteria:
 
-- [ ] Accept only valid HTTP or HTTPS feed URLs without embedded credentials.
-- [ ] Reject loopback, private, link-local, and otherwise unsafe destinations before requesting them.
-- [ ] Revalidate every redirect destination and enforce a small redirect limit.
-- [ ] Apply explicit connection/read timeouts and a maximum response size.
-- [ ] Reject clearly incompatible response content while accepting standard RSS/XML content types.
-- [ ] Convert transport, policy, size, and HTTP failures into clear application-owned errors.
-- [ ] Compose retrieval with `parse_rss_feed` and return a typed `PodcastFeed`.
-- [ ] Use an injected or mocked transport so the default test suite remains network-free.
-- [ ] Pass all repository quality gates and a package build.
+- [x] Accept only valid HTTP or HTTPS feed URLs without embedded credentials.
+- [x] Reject loopback, private, link-local, and otherwise unsafe destinations before requesting them.
+- [x] Revalidate every redirect destination and enforce a small redirect limit.
+- [x] Apply explicit connection/read timeouts and a maximum response size.
+- [x] Reject clearly incompatible response content while accepting standard RSS/XML content types.
+- [x] Convert transport, policy, size, and HTTP failures into clear application-owned errors.
+- [x] Compose retrieval with `parse_rss_feed` and return a typed `PodcastFeed`.
+- [x] Use an injected or mocked transport so the default test suite remains network-free.
+- [x] Pass all repository quality gates and a package build.
+
+Status: complete on 2026-08-19. This remains the single milestone under **Current** until the user approves promoting a proposed milestone.
+
+Completion evidence:
+
+- Runtime contract: public HTTP(S) destinations only, every redirect revalidated, at most three redirects, 5-second connect and 10-second read timeouts, and a 2,000,000-byte decoded response limit by default
+- Failure contract: application-owned policy, transport, HTTP, content-type, and response-size errors; XML parse failures remain application-owned `RssFeedParseError` values
+- Validation: 55 deterministic offline tests passed with 96.32% total coverage; Ruff formatting and linting, strict mypy, lockfile consistency, and package build all passed
+- Live network calls: none required or performed
 
 Out of scope:
 
