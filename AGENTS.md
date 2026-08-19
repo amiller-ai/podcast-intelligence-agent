@@ -6,11 +6,14 @@ This repository is a personal Podcast Intelligence application built incremental
 
 ## Workflow
 
-1. Work on one user-approved milestone at a time.
-2. State or preserve acceptance criteria before implementing behavior.
-3. Make the smallest coherent change that satisfies the milestone.
-4. Run the relevant offline checks before proposing the next milestone.
-5. Do not make live API calls unless the milestone explicitly requires them and credentials are present.
+1. Read `docs/ROADMAP.md` and confirm the single milestone under **Current**.
+2. Work on one user-approved milestone at a time.
+3. State or preserve acceptance criteria before implementing behavior.
+4. Make the smallest coherent change that satisfies the milestone.
+5. Run the relevant offline checks before proposing the next milestone.
+6. After validation, update the roadmap with completion evidence, then commit and push the milestone.
+7. Do not promote proposed work to **Current** without user approval.
+8. Do not make live API calls unless the milestone explicitly requires them and credentials are present.
 
 ## Architecture conventions
 

@@ -4,7 +4,7 @@ A personal application for turning podcast content into searchable, useful intel
 
 ## Project status
 
-Milestone 2 adds typed podcast models and safe, offline RSS 2.0 parsing. Network feed retrieval and podcast analysis behavior have not been added yet.
+Milestone 2 is complete with typed podcast models and safe, offline RSS 2.0 parsing. Milestone 3—guarded HTTP RSS retrieval—is current. See the [`docs/ROADMAP.md`](docs/ROADMAP.md) source of truth for acceptance criteria and proposed follow-on work.
 
 ## Development setup
 
@@ -52,6 +52,7 @@ uv run pytest -o "addopts=--strict-config --strict-markers" -m integration tests
 ```text
 src/podcast_intelligence/  Application package
 src/podcast_intelligence/ingestion/  Podcast source adapters
+docs/                       Durable project state and design notes
 tests/                     Unit tests and synthetic fixtures
 tests/integration/         Explicit live-service smoke tests
 ```
