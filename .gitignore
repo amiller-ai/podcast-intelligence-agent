@@ -216,3 +216,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Podcast Intelligence runtime artifacts
+data/
+var/
