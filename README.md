@@ -4,7 +4,7 @@ A personal application for turning podcast content into searchable, useful intel
 
 ## Project status
 
-Milestone 4 is complete with exact Spotify-to-RSS episode resolution and ordered transcript-source discovery. It remains the current milestone until the guarded audio-transcription fallback is explicitly approved. See the [`docs/ROADMAP.md`](docs/ROADMAP.md) source of truth for completion evidence and proposed work.
+Milestone 5 is complete with an explicitly authorized, resource-bounded RSS audio fallback and an injected provider-independent transcription boundary. It never accepts Spotify audio, does not retain temporary audio, and remains the current milestone until structured podcast intelligence is explicitly approved. See the [`docs/ROADMAP.md`](docs/ROADMAP.md) source of truth for completion evidence and proposed work.
 
 ## Development setup
 
@@ -80,5 +80,8 @@ Durable contributor and coding-agent instructions live in [`AGENTS.md`](AGENTS.m
 - [Responses API guide](https://developers.openai.com/api/docs/guides/migrate-to-responses)
 - [Conversation state](https://developers.openai.com/api/docs/guides/conversation-state)
 - [Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs)
+- [File transcription](https://developers.openai.com/api/docs/guides/speech-to-text)
 
 The initial model default was resolved from current OpenAI guidance on 2026-08-19. It remains configuration so it can be evaluated and changed without rewriting application code.
+
+Current OpenAI documentation routes bounded file transcription through a dedicated audio endpoint rather than the Responses API. Milestone 5 therefore stops at an injected application boundary instead of adding a provider call that conflicts with this repository's Responses-only convention.

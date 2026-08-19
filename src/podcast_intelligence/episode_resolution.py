@@ -13,10 +13,10 @@ from urllib.parse import urlsplit
 import httpx2
 
 from podcast_intelligence.ingestion.http import (
-    HostResolver,
     RssRetrievalPolicy,
     retrieve_rss_feed,
 )
+from podcast_intelligence.ingestion.network import HostResolver
 from podcast_intelligence.models import PodcastEpisode, TranscriptReference
 
 _SPOTIFY_OEMBED_URL = "https://open.spotify.com/oembed"

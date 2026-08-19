@@ -70,8 +70,6 @@ Out of scope:
 - OpenAI-based podcast analysis
 - User interface or deployment
 
-## Current
-
 ### Milestone 4 — Episode resolution and transcript source discovery
 
 Goal: resolve a user-provided Spotify episode URL to the exact episode in its canonical RSS feed, then report the first viable transcript source without scraping Spotify audio or guessing across ambiguous matches.
@@ -89,7 +87,7 @@ Acceptance criteria:
 - [x] Use injected or mocked transports so the default test suite remains deterministic and network-free.
 - [x] Pass all repository quality gates and a package build.
 
-Status: complete on 2026-08-19. This remains the single milestone under **Current** until the user approves promoting a proposed milestone.
+Status: complete on 2026-08-19.
 
 Completion evidence:
 
@@ -105,13 +103,52 @@ Privacy and retention contract:
 - Do not log Spotify embed payloads, playback URLs, anonymous tokens, or raw episode descriptions.
 - Preserve only normalized identifiers and source URLs in returned domain models.
 
-## Proposed
-
-These milestones are directional and require approval before becoming current.
+## Current
 
 ### Milestone 5 — Guarded audio transcription fallback
 
-When earlier transcript resolvers return no usable source, retrieve an authorized RSS audio enclosure within explicit duration, byte, cost, and retention limits and transcribe it behind an application-owned boundary. Never download audio from Spotify. Normalize the result to the same transcript contract and delete temporary audio after use.
+Goal: when RSS exposes no usable transcript, retrieve an explicitly authorized RSS audio enclosure within strict network, duration, byte, cost, and retention limits and pass it to an application-owned transcription boundary. Never download audio from Spotify.
+
+Acceptance criteria:
+
+- [x] Require explicit caller authorization and an episode with no supported public RSS transcript.
+- [x] Accept only the episode's verified HTTP(S) RSS audio enclosure; never accept a Spotify playback URL or arbitrary replacement URL.
+- [x] Reject loopback, private, link-local, and otherwise unsafe destinations before requesting them, and revalidate every redirect destination.
+- [x] Require declared RSS duration no greater than two hours and an estimated transcription cost no greater than $1.00 before download.
+- [x] Apply explicit connection/read timeouts, at most three redirects, and a 25,000,000-byte response limit.
+- [x] Accept only supported audio media types and reject incompatible or conflicting RSS/HTTP media types.
+- [x] Pass the bounded file to a typed, application-owned transcription boundary and return typed transcript provenance.
+- [x] Keep the temporary audio private and delete it after success or every failure; do not persist or log audio or transcript content.
+- [x] Convert authorization, eligibility, policy, transport, HTTP, media-type, size, cost, and provider failures into clear application-owned errors.
+- [x] Use injected or mocked network and transcription boundaries so the default test suite remains deterministic and network-free.
+- [x] Pass all repository quality gates and a package build.
+
+Status: complete on 2026-08-19. This remains the single milestone under **Current** until the user approves promoting a proposed milestone.
+
+Completion evidence:
+
+- Eligibility contract: explicit authorization, no supported public RSS transcript, a typed RSS audio enclosure, and positive declared duration are required before retrieval
+- Runtime contract: public non-Spotify HTTP(S) destinations only, every redirect revalidated, at most three redirects, 5-second connect and 30-second read timeouts, a two-hour declared-duration limit, a 25,000,000-byte decoded response limit, and a $1.00 preflight estimate cap
+- Boundary contract: typed provider-independent input/output, application-owned provider failures, and episode/source/model/response provenance returned without adding a conflicting OpenAI endpoint
+- Retention contract: audio is streamed into a private temporary directory and deleted after success, retrieval failure, or provider failure; no application logging or persistence was added
+- Validation: 122 deterministic offline tests passed with 96.54% total coverage; Ruff formatting and linting, strict mypy, lockfile consistency, and package build all passed
+- Live network or model calls: none required or performed
+
+Provider boundary note:
+
+- Current OpenAI documentation routes bounded file transcription through `/v1/audio/transcriptions`, while this repository requires model interactions to use the Responses API. This milestone therefore defines and exercises an injected provider-independent transcription boundary without adding a conflicting provider SDK call.
+
+Out of scope:
+
+- Spotify audio or playback credential access
+- Audio chunking, format conversion, diarization, or translation
+- A concrete provider adapter or live transcription call
+- Persistent audio or transcript storage
+- Podcast intelligence analysis, search, user interface, or deployment
+
+## Proposed
+
+These milestones are directional and require approval before becoming current.
 
 ### Milestone 6 — Structured podcast intelligence
 

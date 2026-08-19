@@ -1,17 +1,18 @@
 """Guarded HTTP retrieval for podcast RSS feeds."""
 
-import socket
-from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from ipaddress import IPv4Address, IPv6Address, ip_address
-from urllib.parse import urljoin, urlsplit
+from urllib.parse import urljoin
 
 import httpx2
 
+from podcast_intelligence.ingestion.network import (
+    HostResolver,
+    PublicHttpDestinationError,
+    resolve_host,
+    validate_public_http_destination,
+)
 from podcast_intelligence.ingestion.rss import parse_rss_feed
 from podcast_intelligence.models import PodcastFeed
-
-type HostResolver = Callable[[str, int], Sequence[str]]
 
 _REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
 _XML_MEDIA_TYPES = frozenset({"application/rss+xml", "application/xml", "text/xml"})
@@ -71,7 +72,7 @@ def retrieve_rss_feed(
 ) -> PodcastFeed:
     """Retrieve a bounded public RSS URL and parse it into a podcast feed."""
 
-    resolve_host = resolver or _resolve_host
+    resolve_destination = resolver or resolve_host
     timeout = httpx2.Timeout(
         connect=policy.connect_timeout_seconds,
         read=policy.read_timeout_seconds,
@@ -90,7 +91,7 @@ def retrieve_rss_feed(
                 client,
                 url,
                 policy=policy,
-                resolver=resolve_host,
+                resolver=resolve_destination,
             )
     except httpx2.RequestError as error:
         raise RssFeedTransportError(f"RSS request failed: {error}") from error
@@ -146,56 +147,16 @@ def _retrieve_payload(
 
 def _validate_destination(url: str, *, resolver: HostResolver) -> None:
     try:
-        parsed = urlsplit(url)
-        port = parsed.port
-    except ValueError as error:
-        raise RssFeedPolicyError("RSS URL is invalid") from error
-
-    if parsed.scheme.lower() not in {"http", "https"}:
-        raise RssFeedPolicyError("RSS URL must use HTTP or HTTPS")
-    if parsed.username is not None or parsed.password is not None:
-        raise RssFeedPolicyError("RSS URL must not contain embedded credentials")
-    if parsed.hostname is None:
-        raise RssFeedPolicyError("RSS URL must include a host")
-
-    effective_port = port or (443 if parsed.scheme.lower() == "https" else 80)
-    addresses = _destination_addresses(parsed.hostname, effective_port, resolver=resolver)
-    if not addresses:
-        raise RssFeedPolicyError("RSS destination did not resolve to an IP address")
-    if any(not _is_safe_public_address(address) for address in addresses):
-        raise RssFeedPolicyError("RSS destination must resolve only to public IP addresses")
-
-
-def _destination_addresses(host: str, port: int, *, resolver: HostResolver) -> Sequence[str]:
-    try:
-        return (str(ip_address(host.split("%", maxsplit=1)[0])),)
-    except ValueError:
-        try:
-            return resolver(host, port)
-        except OSError as error:
-            raise RssFeedPolicyError("RSS destination host could not be resolved") from error
-
-
-def _is_safe_public_address(address: str) -> bool:
-    try:
-        parsed: IPv4Address | IPv6Address = ip_address(address.split("%", maxsplit=1)[0])
-    except ValueError:
-        return False
-
-    return bool(
-        parsed.is_global
-        and not parsed.is_loopback
-        and not parsed.is_link_local
-        and not parsed.is_multicast
-        and not parsed.is_private
-        and not parsed.is_reserved
-        and not parsed.is_unspecified
-    )
-
-
-def _resolve_host(host: str, port: int) -> tuple[str, ...]:
-    results = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
-    return tuple(dict.fromkeys(str(result[4][0]) for result in results))
+        validate_public_http_destination(
+            url,
+            resolver=resolver,
+            resource_name="RSS",
+        )
+    except PublicHttpDestinationError as error:
+        message = str(error)
+        if message == "destination host could not be resolved":
+            message = "RSS destination host could not be resolved"
+        raise RssFeedPolicyError(message) from error
 
 
 def _validate_content_type(header: str | None) -> None:
