@@ -5,6 +5,7 @@ description = "Personal podcast intelligence application built with the OpenAI R
 readme = "README.md"
 requires-python = ">=3.12,<3.13"
 dependencies = [
+    "defusedxml>=0.7.1",
     "openai>=3.1.0",
     "pydantic-settings>=2.15.0",
 ]
@@ -52,4 +53,5 @@ dev = [
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
     "ruff>=0.16.3",
+    "types-defusedxml>=0.7.0.20260504",
 ]
