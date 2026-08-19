@@ -75,18 +75,25 @@ class RecordingTranscriber:
         self.payloads: list[bytes] = []
         self.private_during_call = False
 
-    def transcribe(self, audio_path: Path, *, media_type: str) -> ProviderTranscript:
+    def transcribe(
+        self,
+        audio_path: Path,
+        *,
+        media_type: str,
+        duration_seconds: int,
+    ) -> ProviderTranscript:
         self.paths.append(audio_path)
         self.media_types.append(media_type)
         self.payloads.append(audio_path.read_bytes())
         self.private_during_call = S_IMODE(audio_path.parent.stat().st_mode) & 0o077 == 0
+        assert duration_seconds == 1_800
         if self.failure is not None:
             raise self.failure
         return ProviderTranscript(
             text="A small synthetic transcript.",
             provider="test-provider",
             model="test-model",
-            response_id="transcription-1",
+            request_ids=("transcription-1",),
             language="en",
         )
 
@@ -120,6 +127,7 @@ def test_transcribe_episode_audio_returns_typed_provenance_and_deletes_audio() -
     assert result.estimated_cost_usd == Decimal("0.25")
     assert result.transcript.text == "A small synthetic transcript."
     assert result.transcript.response_id == "transcription-1"
+    assert result.transcript.request_ids == ("transcription-1",)
     assert transcriber.payloads == [_AUDIO_BYTES]
     assert transcriber.media_types == ["audio/mpeg"]
     assert transcriber.private_during_call is True
@@ -508,11 +516,16 @@ def test_audio_transcription_policy_rejects_invalid_bounds(kwargs: dict[str, obj
         {"text": " "},
         {"provider": " "},
         {"model": " "},
+        {"chunk_count": 0},
     ],
 )
-def test_provider_transcript_rejects_empty_required_fields(kwargs: dict[str, str]) -> None:
-    values = {"text": "Transcript", "provider": "Provider", "model": "Model"}
+def test_provider_transcript_rejects_empty_required_fields(kwargs: dict[str, object]) -> None:
+    values: dict[str, object] = {
+        "text": "Transcript",
+        "provider": "Provider",
+        "model": "Model",
+    }
     values.update(kwargs)
 
     with pytest.raises(ValueError):
-        ProviderTranscript(**values)
+        ProviderTranscript(**values)  # type: ignore[arg-type]

@@ -115,34 +115,40 @@ Acceptance criteria:
 - [x] Accept only the episode's verified HTTP(S) RSS audio enclosure; never accept a Spotify playback URL or arbitrary replacement URL.
 - [x] Reject loopback, private, link-local, and otherwise unsafe destinations before requesting them, and revalidate every redirect destination.
 - [x] Require declared RSS duration no greater than two hours and an estimated transcription cost no greater than $1.00 before download.
-- [x] Apply explicit connection/read timeouts, at most three redirects, and a 25,000,000-byte response limit.
+- [x] Apply explicit connection/read timeouts, at most three redirects, and a 100,000,000-byte enclosure limit.
 - [x] Accept only supported audio media types and reject incompatible or conflicting RSS/HTTP media types.
-- [x] Pass the bounded file to a typed, application-owned transcription boundary and return typed transcript provenance.
+- [x] Tolerate a narrowly defined catalog title suffix omission only when the catalog match is unique and the verified RSS GUID and normalized RSS title match the Spotify title.
+- [x] Configure the transcription model and price centrally, defaulting to the documented `gpt-transcribe` model and $0.0045/minute standard price.
+- [x] Split large enclosures into temporary ffmpeg-generated chunks below the 25 MB API upload limit and reject any oversized generated chunk before upload.
+- [x] Transcribe chunks sequentially through OpenAI's `/v1/audio/transcriptions` endpoint, carry bounded prior text as continuity context, and return one typed in-memory transcript with all request IDs.
 - [x] Keep the temporary audio private and delete it after success or every failure; do not persist or log audio or transcript content.
 - [x] Convert authorization, eligibility, policy, transport, HTTP, media-type, size, cost, and provider failures into clear application-owned errors.
 - [x] Use injected or mocked network and transcription boundaries so the default test suite remains deterministic and network-free.
 - [x] Pass all repository quality gates and a package build.
+- [x] Complete one explicitly authorized live test on the supplied Spotify episode without persisting or printing audio or transcript content.
 
 Status: complete on 2026-08-19. This remains the single milestone under **Current** until the user approves promoting a proposed milestone.
 
 Completion evidence:
 
 - Eligibility contract: explicit authorization, no supported public RSS transcript, a typed RSS audio enclosure, and positive declared duration are required before retrieval
-- Runtime contract: public non-Spotify HTTP(S) destinations only, every redirect revalidated, at most three redirects, 5-second connect and 30-second read timeouts, a two-hour declared-duration limit, a 25,000,000-byte decoded response limit, and a $1.00 preflight estimate cap
-- Boundary contract: typed provider-independent input/output, application-owned provider failures, and episode/source/model/response provenance returned without adding a conflicting OpenAI endpoint
-- Retention contract: audio is streamed into a private temporary directory and deleted after success, retrieval failure, or provider failure; no application logging or persistence was added
-- Validation: 122 deterministic offline tests passed with 96.54% total coverage; Ruff formatting and linting, strict mypy, lockfile consistency, and package build all passed
-- Live network or model calls: none required or performed
+- Runtime contract: public non-Spotify HTTP(S) destinations only, every redirect revalidated, at most three redirects, 5-second connect and 30-second read timeouts, a two-hour declared-duration limit, a 100,000,000-byte decoded enclosure limit, a 25,000,000-byte per-upload limit, and a $1.00 preflight estimate cap
+- Boundary contract: `gpt-transcribe` and its $0.0045/minute price are centrally configurable; ffmpeg chunks large files without re-encoding; chunk requests carry bounded continuity context and preserve every OpenAI request ID
+- Identity contract: a catalog-only omission matching `- [show, EP.number]` is allowed only for a unique candidate followed by exact normalized Spotify-to-RSS title and catalog-GUID verification
+- Retention contract: the enclosure and generated chunks live only in private temporary directories and are deleted after success, retrieval failure, chunking failure, or provider failure; transcript text remains in memory and is not logged or persisted
+- OpenAI data contract verified 2026-08-19: the current endpoint table lists `/v1/audio/transcriptions` as not used for training, with no abuse-monitoring or application-state retention, and as Zero Data Retention eligible
+- Offline validation: 143 deterministic tests passed with 96.01% total coverage; Ruff formatting and linting, strict mypy, lockfile consistency, and package build all passed
+- Live validation: supplied Spotify episode `0VPwvReM2olZDWl3YOHfqh` resolved to its verified RSS episode, downloaded a 74,504,048-byte enclosure with declared duration 4,576 seconds, passed the $0.3432 estimate gate, produced multiple sub-25 MB chunks, returned one non-empty transcript with one request ID per chunk, and completed in 138.64 seconds
+- Live content handling: neither audio nor transcript content was printed or persisted
 
-Provider boundary note:
+Approved provider boundary:
 
-- Current OpenAI documentation routes bounded file transcription through `/v1/audio/transcriptions`, while this repository requires model interactions to use the Responses API. This milestone therefore defines and exercises an injected provider-independent transcription boundary without adding a conflicting provider SDK call.
+- Current OpenAI documentation routes bounded file transcription through `/v1/audio/transcriptions`, recommends `gpt-transcribe`, and limits each upload to 25 MB. The user's 2026-08-19 request explicitly approved implementing and live-testing that speech-to-text ingestion endpoint; Responses remains the required API for later reasoning and intelligence calls.
 
 Out of scope:
 
 - Spotify audio or playback credential access
-- Audio chunking, format conversion, diarization, or translation
-- A concrete provider adapter or live transcription call
+- Diarization or translation
 - Persistent audio or transcript storage
 - Podcast intelligence analysis, search, user interface, or deployment
 

@@ -28,9 +28,9 @@ This repository is a personal Podcast Intelligence application built incremental
 
 ## OpenAI conventions
 
-- Use the Responses API for all model calls.
+- Use the Responses API for reasoning and podcast-intelligence model calls. The Audio Transcriptions API is the only approved exception, limited to bounded speech-to-text ingestion.
 - Read `OPENAI_API_KEY` from the environment; never accept or commit a key in source or fixtures.
-- Read the model ID from `OPENAI_MODEL`; do not scatter model strings through the codebase.
+- Read reasoning and transcription model IDs from `OPENAI_MODEL` and `OPENAI_TRANSCRIPTION_MODEL`; do not scatter model strings through the codebase.
 - Keep prompts outcome-oriented with explicit success criteria and output contracts.
 - Use Structured Outputs for machine-consumed results.
 - Preserve complete response items, call IDs, and state lineage in future tool or multi-turn loops.

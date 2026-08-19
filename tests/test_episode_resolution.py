@@ -73,6 +73,7 @@ def _metadata_transport(
 def _rss_transport(
     *,
     guid: str = _EPISODE_GUID,
+    title: str = _EPISODE_TITLE,
     transcript_element: str = (
         '<podcast:transcript url="https://cdn.example.test/episode.vtt" '
         'type="text/vtt" language="en" />'
@@ -86,7 +87,7 @@ def _rss_transport(
     )
     xml = f"""<rss version="2.0" xmlns:podcast="https://podcastindex.org/namespace/1.0">
     <channel><title>Example Show</title><item><guid>{guid}</guid>
-    <title>{_EPISODE_TITLE}</title><link>https://publisher.example.test/285</link>
+    <title>{title}</title><link>https://publisher.example.test/285</link>
     {enclosure}{transcript_element}</item></channel></rss>"""
     return _transport(
         lambda _request: httpx2.Response(
@@ -135,13 +136,14 @@ def test_resolve_spotify_episode_verifies_rss_guid_and_prefers_rss_transcript() 
 
 
 def test_resolve_spotify_episode_normalizes_punctuation_for_exact_match() -> None:
+    spotify_title = "Builder\u2019s Guide \u2014 Part 1"
     resolved = resolve_spotify_episode(
         f"https://open.spotify.com/episode/{_SPOTIFY_ID}",
         metadata_transport=_metadata_transport(
-            spotify_payload={"title": "Builder\u2019s Guide \u2014 Part 1"},
+            spotify_payload={"title": spotify_title},
             catalog_results=[_catalog_result(title="Builder's Guide - Part 1")],
         ),
-        rss_transport=_rss_transport(),
+        rss_transport=_rss_transport(title=spotify_title),
         resolver=_public_resolver,
     )
 
@@ -218,12 +220,41 @@ def test_resolve_spotify_episode_rejects_invalid_catalog_response(payload: objec
 
 
 def test_resolve_spotify_episode_rejects_no_exact_catalog_match() -> None:
-    with pytest.raises(EpisodeMatchError, match="no exact"):
+    with pytest.raises(EpisodeMatchError, match="no safe"):
         resolve_spotify_episode(
             f"https://open.spotify.com/episode/{_SPOTIFY_ID}",
             metadata_transport=_metadata_transport(
                 catalog_results=[_catalog_result(title="Similar but different")]
             ),
+        )
+
+
+def test_resolve_spotify_episode_allows_catalog_to_omit_show_episode_suffix() -> None:
+    spotify_title = "A Great Conversation - [Example Show, EP.487]"
+    resolved = resolve_spotify_episode(
+        f"https://open.spotify.com/episode/{_SPOTIFY_ID}",
+        metadata_transport=_metadata_transport(
+            spotify_payload={"title": spotify_title},
+            catalog_results=[_catalog_result(title="A Great Conversation")],
+        ),
+        rss_transport=_rss_transport(title=spotify_title),
+        resolver=_public_resolver,
+    )
+
+    assert resolved.episode.title == spotify_title
+
+
+def test_resolve_spotify_episode_requires_spotify_title_in_verified_rss() -> None:
+    spotify_title = "A Great Conversation - [Example Show, EP.487]"
+    with pytest.raises(EpisodeMatchError, match="RSS episode title"):
+        resolve_spotify_episode(
+            f"https://open.spotify.com/episode/{_SPOTIFY_ID}",
+            metadata_transport=_metadata_transport(
+                spotify_payload={"title": spotify_title},
+                catalog_results=[_catalog_result(title="A Great Conversation")],
+            ),
+            rss_transport=_rss_transport(title="A Different Conversation"),
+            resolver=_public_resolver,
         )
 
 

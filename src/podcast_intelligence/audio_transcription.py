@@ -82,7 +82,7 @@ class AudioTranscriptionPolicy:
 
     connect_timeout_seconds: float = 5.0
     read_timeout_seconds: float = 30.0
-    max_audio_bytes: int = 25_000_000
+    max_audio_bytes: int = 100_000_000
     max_redirects: int = 3
     max_duration_seconds: int = 2 * 60 * 60
     max_estimated_cost_usd: Decimal = Decimal("1.00")
@@ -107,8 +107,9 @@ class ProviderTranscript:
     text: str
     provider: str
     model: str
-    response_id: str | None = None
+    request_ids: tuple[str, ...] = ()
     language: str | None = None
+    chunk_count: int = 1
 
     def __post_init__(self) -> None:
         if not self.text.strip():
@@ -117,12 +118,26 @@ class ProviderTranscript:
             raise ValueError("transcript provider must not be empty")
         if not self.model.strip():
             raise ValueError("transcript model must not be empty")
+        if self.chunk_count <= 0:
+            raise ValueError("transcript chunk count must be positive")
+
+    @property
+    def response_id(self) -> str | None:
+        """Return the first request ID for compatibility with single-chunk callers."""
+
+        return self.request_ids[0] if self.request_ids else None
 
 
 class AudioTranscriber(Protocol):
     """Application-owned boundary implemented by a transcription adapter."""
 
-    def transcribe(self, audio_path: Path, *, media_type: str) -> ProviderTranscript:
+    def transcribe(
+        self,
+        audio_path: Path,
+        *,
+        media_type: str,
+        duration_seconds: int,
+    ) -> ProviderTranscript:
         """Transcribe one bounded local audio file without retaining it."""
         ...
 
@@ -192,7 +207,11 @@ def transcribe_episode_audio(
             resolver=resolver or resolve_host,
         )
         try:
-            transcript = transcriber.transcribe(audio_path, media_type=response_media_type)
+            transcript = transcriber.transcribe(
+                audio_path,
+                media_type=response_media_type,
+                duration_seconds=episode.duration_seconds,
+            )
         except AudioTranscriptionError:
             raise
         except Exception as error:

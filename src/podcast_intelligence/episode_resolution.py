@@ -22,6 +22,10 @@ from podcast_intelligence.models import PodcastEpisode, TranscriptReference
 _SPOTIFY_OEMBED_URL = "https://open.spotify.com/oembed"
 _APPLE_PODCAST_SEARCH_URL = "https://itunes.apple.com/search"
 _SPOTIFY_EPISODE_ID = re.compile(r"^[A-Za-z0-9]{22}$")
+_CATALOG_OMITTED_SUFFIX = re.compile(
+    r"\s*-\s*\[[^\]]+,\s*EP(?:ISODE)?\.?\s*\d+\]\s*$",
+    flags=re.IGNORECASE,
+)
 _METADATA_RESPONSE_LIMIT = 1_000_000
 _DEFAULT_FEED_POLICY = RssRetrievalPolicy(max_response_bytes=10_000_000)
 _SUPPORTED_TRANSCRIPT_MEDIA_TYPES = frozenset(
@@ -160,6 +164,8 @@ def resolve_spotify_episode(
     )
     if rss_episode is None:
         raise EpisodeMatchError("catalog episode GUID was not found in the canonical RSS feed")
+    if _normalize_title(rss_episode.title) != _normalize_title(spotify_title):
+        raise EpisodeMatchError("verified RSS episode title does not match the Spotify episode")
 
     return ResolvedSpotifyEpisode(
         spotify_episode_id=spotify_episode_id,
@@ -339,14 +345,17 @@ def _select_catalog_episode(
     spotify_title: str,
     candidates: Sequence[CatalogEpisode],
 ) -> CatalogEpisode:
-    normalized_title = _normalize_title(spotify_title)
+    normalized_titles = {_normalize_title(spotify_title)}
+    without_catalog_suffix = _CATALOG_OMITTED_SUFFIX.sub("", spotify_title)
+    if without_catalog_suffix != spotify_title:
+        normalized_titles.add(_normalize_title(without_catalog_suffix))
     matches = {
         (candidate.episode_guid, candidate.feed_url): candidate
         for candidate in candidates
-        if _normalize_title(candidate.title) == normalized_title
+        if _normalize_title(candidate.title) in normalized_titles
     }
     if not matches:
-        raise EpisodeMatchError("no exact podcast catalog match was found for the Spotify episode")
+        raise EpisodeMatchError("no safe podcast catalog match was found for the Spotify episode")
     if len(matches) > 1:
         raise EpisodeMatchError("Spotify episode title matched multiple podcast catalog episodes")
     return next(iter(matches.values()))
