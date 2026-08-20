@@ -15,6 +15,7 @@ def test_settings_have_safe_explicit_defaults() -> None:
     assert settings.openai_model == "gpt-5.6-sol"
     assert settings.openai_reasoning_effort == "medium"
     assert settings.openai_store_responses is False
+    assert settings.openai_responses_timeout_seconds == 600.0
     assert settings.openai_transcription_model == "gpt-transcribe"
     assert settings.openai_transcription_cost_per_minute_usd == Decimal("0.0045")
     assert settings.openai_transcription_timeout_seconds == 600.0
@@ -46,6 +47,7 @@ def test_settings_reject_empty_required_values(field: str) -> None:
         ("openai_transcription_cost_per_minute_usd", Decimal(0)),
         ("openai_transcription_cost_per_minute_usd", Decimal("NaN")),
         ("openai_transcription_timeout_seconds", 0),
+        ("openai_responses_timeout_seconds", 0),
     ],
 )
 def test_settings_reject_invalid_transcription_limits(field: str, value: object) -> None:

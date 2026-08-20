@@ -1,0 +1,786 @@
+{
+  "components": {
+    "schemas": {
+      "AnalysisRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "consent": {
+            "const": true,
+            "title": "Consent",
+            "type": "boolean"
+          },
+          "refresh": {
+            "default": false,
+            "title": "Refresh",
+            "type": "boolean"
+          }
+        },
+        "required": ["consent"],
+        "title": "AnalysisRequest",
+        "type": "object"
+      },
+      "AnalysisResultView": {
+        "additionalProperties": false,
+        "properties": {
+          "analysis": {
+            "$ref": "#/components/schemas/EpisodeAnalysisView"
+          },
+          "analysis_run_id": {
+            "title": "Analysis Run Id",
+            "type": "integer"
+          },
+          "cache_status": {
+            "enum": ["cached", "created"],
+            "title": "Cache Status",
+            "type": "string"
+          },
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "response_id": {
+            "title": "Response Id",
+            "type": "string"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/UsageView"
+          }
+        },
+        "required": [
+          "cache_status",
+          "analysis_run_id",
+          "response_id",
+          "model",
+          "created_at",
+          "usage",
+          "analysis"
+        ],
+        "title": "AnalysisResultView",
+        "type": "object"
+      },
+      "EpisodeAnalysisView": {
+        "additionalProperties": false,
+        "properties": {
+          "actionable_insights": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceBackedItemView"
+            },
+            "title": "Actionable Insights",
+            "type": "array"
+          },
+          "claims": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceBackedItemView"
+            },
+            "title": "Claims",
+            "type": "array"
+          },
+          "limitations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Limitations",
+            "type": "array"
+          },
+          "people": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceBackedItemView"
+            },
+            "title": "People",
+            "type": "array"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/EvidenceBackedItemView"
+          },
+          "topics": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceBackedItemView"
+            },
+            "title": "Topics",
+            "type": "array"
+          }
+        },
+        "required": [
+          "summary",
+          "topics",
+          "people",
+          "claims",
+          "actionable_insights",
+          "limitations"
+        ],
+        "title": "EpisodeAnalysisView",
+        "type": "object"
+      },
+      "EpisodeDetailResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "analysis": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnalysisResultView"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "episode": {
+            "$ref": "#/components/schemas/TranscriptMetadataView"
+          },
+          "max_question_chars": {
+            "title": "Max Question Chars",
+            "type": "integer"
+          }
+        },
+        "required": ["episode", "analysis", "max_question_chars"],
+        "title": "EpisodeDetailResponse",
+        "type": "object"
+      },
+      "EpisodeListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "episodes": {
+            "items": {
+              "$ref": "#/components/schemas/EpisodeSummaryView"
+            },
+            "title": "Episodes",
+            "type": "array"
+          }
+        },
+        "required": ["episodes"],
+        "title": "EpisodeListResponse",
+        "type": "object"
+      },
+      "EpisodeSummaryView": {
+        "additionalProperties": false,
+        "properties": {
+          "analysis_available": {
+            "title": "Analysis Available",
+            "type": "boolean"
+          },
+          "episode_id": {
+            "title": "Episode Id",
+            "type": "integer"
+          },
+          "latest_analysis_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Analysis Status"
+          },
+          "latest_transcription_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Latest Transcription Status"
+          },
+          "spotify_episode_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spotify Episode Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "transcript_available": {
+            "title": "Transcript Available",
+            "type": "boolean"
+          },
+          "transcript_run_id": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transcript Run Id"
+          }
+        },
+        "required": [
+          "episode_id",
+          "transcript_run_id",
+          "spotify_episode_id",
+          "title",
+          "latest_transcription_status",
+          "transcript_available",
+          "analysis_available",
+          "latest_analysis_status"
+        ],
+        "title": "EpisodeSummaryView",
+        "type": "object"
+      },
+      "ErrorDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": ["code", "message"],
+        "title": "ErrorDetail",
+        "type": "object"
+      },
+      "ErrorEnvelope": {
+        "additionalProperties": false,
+        "properties": {
+          "error": {
+            "$ref": "#/components/schemas/ErrorDetail"
+          }
+        },
+        "required": ["error"],
+        "title": "ErrorEnvelope",
+        "type": "object"
+      },
+      "EvidenceBackedItemView": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceView"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": ["text", "evidence"],
+        "title": "EvidenceBackedItemView",
+        "type": "object"
+      },
+      "EvidenceView": {
+        "additionalProperties": false,
+        "properties": {
+          "quote": {
+            "title": "Quote",
+            "type": "string"
+          },
+          "segment_id": {
+            "title": "Segment Id",
+            "type": "string"
+          }
+        },
+        "required": ["segment_id", "quote"],
+        "title": "EvidenceView",
+        "type": "object"
+      },
+      "QuestionRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "consent": {
+            "const": true,
+            "title": "Consent",
+            "type": "boolean"
+          },
+          "question": {
+            "minLength": 1,
+            "title": "Question",
+            "type": "string"
+          }
+        },
+        "required": ["consent", "question"],
+        "title": "QuestionRequest",
+        "type": "object"
+      },
+      "QuestionResultView": {
+        "additionalProperties": false,
+        "properties": {
+          "answer": {
+            "title": "Answer",
+            "type": "string"
+          },
+          "cache_status": {
+            "const": "not_persisted",
+            "default": "not_persisted",
+            "title": "Cache Status",
+            "type": "string"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/EvidenceView"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "insufficient_evidence": {
+            "title": "Insufficient Evidence",
+            "type": "boolean"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "response_id": {
+            "title": "Response Id",
+            "type": "string"
+          },
+          "response_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Response Ids",
+            "type": "array"
+          },
+          "tool_calls": {
+            "items": {
+              "$ref": "#/components/schemas/ToolTraceView"
+            },
+            "title": "Tool Calls",
+            "type": "array"
+          },
+          "usage": {
+            "$ref": "#/components/schemas/UsageView"
+          }
+        },
+        "required": [
+          "response_id",
+          "response_ids",
+          "model",
+          "answer",
+          "insufficient_evidence",
+          "evidence",
+          "usage",
+          "tool_calls"
+        ],
+        "title": "QuestionResultView",
+        "type": "object"
+      },
+      "ToolTraceView": {
+        "additionalProperties": false,
+        "properties": {
+          "call_id": {
+            "title": "Call Id",
+            "type": "string"
+          },
+          "response_id": {
+            "title": "Response Id",
+            "type": "string"
+          },
+          "result_segment_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Result Segment Ids",
+            "type": "array"
+          },
+          "tool_name": {
+            "title": "Tool Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "response_id",
+          "call_id",
+          "tool_name",
+          "result_segment_ids"
+        ],
+        "title": "ToolTraceView",
+        "type": "object"
+      },
+      "TranscriptMetadataView": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "title": "Created At",
+            "type": "string"
+          },
+          "episode_id": {
+            "title": "Episode Id",
+            "type": "integer"
+          },
+          "feed_url": {
+            "title": "Feed Url",
+            "type": "string"
+          },
+          "rss_guid": {
+            "title": "Rss Guid",
+            "type": "string"
+          },
+          "spotify_episode_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Spotify Episode Id"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "transcript_id": {
+            "title": "Transcript Id",
+            "type": "integer"
+          },
+          "transcript_run_id": {
+            "title": "Transcript Run Id",
+            "type": "integer"
+          },
+          "transcription_model": {
+            "title": "Transcription Model",
+            "type": "string"
+          }
+        },
+        "required": [
+          "transcript_run_id",
+          "transcript_id",
+          "episode_id",
+          "feed_url",
+          "rss_guid",
+          "spotify_episode_id",
+          "title",
+          "transcription_model",
+          "created_at"
+        ],
+        "title": "TranscriptMetadataView",
+        "type": "object"
+      },
+      "UsageView": {
+        "additionalProperties": false,
+        "properties": {
+          "input_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input Tokens"
+          },
+          "output_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Output Tokens"
+          },
+          "total_tokens": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Tokens"
+          }
+        },
+        "required": ["input_tokens", "output_tokens", "total_tokens"],
+        "title": "UsageView",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "Podcast Intelligence",
+    "version": "0.1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/episodes": {
+      "get": {
+        "operationId": "list_episodes_api_episodes_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EpisodeListResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "List Episodes"
+      }
+    },
+    "/api/episodes/{transcript_run_id}": {
+      "get": {
+        "operationId": "episode_detail_api_episodes__transcript_run_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "transcript_run_id",
+            "required": true,
+            "schema": {
+              "title": "Transcript Run Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EpisodeDetailResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          }
+        },
+        "summary": "Episode Detail"
+      }
+    },
+    "/api/episodes/{transcript_run_id}/analysis": {
+      "post": {
+        "operationId": "run_analysis_api_episodes__transcript_run_id__analysis_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "transcript_run_id",
+            "required": true,
+            "schema": {
+              "title": "Transcript Run Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalysisRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalysisResultView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Run Analysis"
+      }
+    },
+    "/api/episodes/{transcript_run_id}/questions": {
+      "post": {
+        "operationId": "ask_question_api_episodes__transcript_run_id__questions_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "transcript_run_id",
+            "required": true,
+            "schema": {
+              "title": "Transcript Run Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/QuestionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QuestionResultView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "502": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Bad Gateway"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorEnvelope"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "summary": "Ask Question"
+      }
+    }
+  }
+}

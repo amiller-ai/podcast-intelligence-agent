@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-5.6-sol"
     openai_reasoning_effort: ReasoningEffort = "medium"
     openai_store_responses: bool = False
+    openai_responses_timeout_seconds: float = 600.0
     openai_transcription_model: str = "gpt-transcribe"
     openai_transcription_cost_per_minute_usd: Decimal = Decimal("0.0045")
     openai_transcription_timeout_seconds: float = 600.0
@@ -77,6 +78,13 @@ class Settings(BaseSettings):
     def transcription_timeout_must_be_positive(cls, value: float) -> float:
         if value <= 0:
             raise ValueError("OPENAI_TRANSCRIPTION_TIMEOUT_SECONDS must be positive")
+        return value
+
+    @field_validator("openai_responses_timeout_seconds")
+    @classmethod
+    def responses_timeout_must_be_positive(cls, value: float) -> float:
+        if value <= 0:
+            raise ValueError("OPENAI_RESPONSES_TIMEOUT_SECONDS must be positive")
         return value
 
     @field_validator("database_path")

@@ -42,6 +42,10 @@ class PersistenceCorruptionError(PersistenceError):
     """Raised when persisted state violates the application contract."""
 
 
+class TranscriptNotFoundError(PersistenceError):
+    """Raised when a requested successful transcript does not exist."""
+
+
 @dataclass(frozen=True, slots=True)
 class EpisodeRecord:
     """Database identity and current source metadata for one RSS episode."""
@@ -75,6 +79,21 @@ class StoredTranscript:
     @property
     def text(self) -> str:
         return self.provider_transcript.text
+
+
+@dataclass(frozen=True, slots=True)
+class StoredTranscriptMetadata:
+    """Transcript-safe metadata loaded without canonical transcript text."""
+
+    run_id: int
+    transcript_id: int
+    episode_id: int
+    feed_url: str
+    rss_guid: str
+    spotify_episode_id: str | None
+    episode_title: str
+    transcription_model: str
+    created_at: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -770,6 +789,38 @@ class TranscriptStore:
             created_at=str(row["created_at"]),
         )
 
+    def get_transcript_metadata(self, run_id: int) -> StoredTranscriptMetadata:
+        """Load browser-safe transcript metadata without selecting transcript text."""
+
+        row = self._connection.execute(
+            """
+            SELECT r.id AS run_id, r.episode_id, r.model AS transcription_model,
+                   t.id AS transcript_id, t.created_at, e.rss_guid, e.spotify_episode_id,
+                   e.title AS episode_title, f.canonical_url
+            FROM transcription_runs r
+            JOIN transcripts t ON t.run_id = r.id
+            JOIN episodes e ON e.id = r.episode_id
+            JOIN feeds f ON f.id = e.feed_id
+            WHERE r.id = ? AND r.status = 'succeeded'
+            """,
+            (run_id,),
+        ).fetchone()
+        if row is None:
+            raise TranscriptNotFoundError("successful transcript metadata was not found")
+        return StoredTranscriptMetadata(
+            run_id=int(row["run_id"]),
+            transcript_id=int(row["transcript_id"]),
+            episode_id=int(row["episode_id"]),
+            feed_url=str(row["canonical_url"]),
+            rss_guid=str(row["rss_guid"]),
+            spotify_episode_id=(
+                str(row["spotify_episode_id"]) if row["spotify_episode_id"] is not None else None
+            ),
+            episode_title=str(row["episode_title"]),
+            transcription_model=str(row["transcription_model"]),
+            created_at=str(row["created_at"]),
+        )
+
     def ensure_segments(
         self,
         transcript: StoredTranscript,
@@ -983,6 +1034,47 @@ class TranscriptStore:
             (transcript.transcript_id, identity),
         ).fetchone()
         return None if row is None else self.get_analysis(int(row["id"]))
+
+    def find_analysis_cache_for_run(
+        self,
+        transcript_run_id: int,
+        *,
+        analysis_type: str,
+        model: str,
+        prompt_version: str,
+        schema_version: str,
+        segmenter_version: str,
+    ) -> StoredEpisodeAnalysis | None:
+        """Find reusable analysis without loading the canonical transcript text."""
+
+        row = self._connection.execute(
+            """
+            SELECT t.id AS transcript_id, t.content_hash
+            FROM transcription_runs r
+            JOIN transcripts t ON t.run_id = r.id
+            WHERE r.id = ? AND r.status = 'succeeded'
+            """,
+            (transcript_run_id,),
+        ).fetchone()
+        if row is None:
+            raise TranscriptNotFoundError("successful transcript metadata was not found")
+        identity = analysis_identity(
+            transcript_content_hash=str(row["content_hash"]),
+            analysis_type=analysis_type,
+            model=model,
+            prompt_version=prompt_version,
+            schema_version=schema_version,
+            segmenter_version=segmenter_version,
+        )
+        analysis_row = self._connection.execute(
+            """
+            SELECT id FROM analysis_runs
+            WHERE transcript_id = ? AND cache_identity = ? AND status = 'succeeded'
+            ORDER BY id DESC LIMIT 1
+            """,
+            (int(row["transcript_id"]), identity),
+        ).fetchone()
+        return None if analysis_row is None else self.get_analysis(int(analysis_row["id"]))
 
     def create_analysis_run(
         self,

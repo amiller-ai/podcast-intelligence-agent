@@ -4,7 +4,11 @@ A personal application for turning podcast content into searchable, useful intel
 
 ## Project status
 
-Milestone 8 adds a small local CLI for listing persisted episode state, running or reusing structured analysis, and asking evidence-grounded questions. It reuses the Milestone 7 SQLite, retrieval, evidence-validation, and Responses boundaries without adding ingestion, transcription, or a web framework. See the [`docs/ROADMAP.md`](docs/ROADMAP.md) source of truth for completion evidence and proposed work.
+Milestone 9 adds a local FastAPI and React/Vite web application for listing persisted episodes,
+reviewing reusable structured analysis, and asking evidence-grounded questions. The browser UI
+reuses the existing SQLite, retrieval, evidence-validation, and Responses boundaries without
+adding ingestion or transcription behavior. See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the
+durable milestone record.
 
 ## Development setup
 
@@ -12,12 +16,14 @@ Prerequisites:
 
 - Python 3.12
 - [`uv`](https://docs.astral.sh/uv/)
+- Node.js 22.12 or newer in the Node 22 line, with npm
 - An OpenAI API key for commands that send transcript content or excerpts to OpenAI
 
 Install the project and its development dependencies:
 
 ```bash
 uv sync --all-groups
+cd frontend && npm ci
 ```
 
 Copy the environment template and add your key locally:
@@ -37,6 +43,14 @@ uv run ruff format --check .
 uv run ruff check .
 uv run mypy src tests
 uv run pytest --cov
+cd frontend
+npm run api:check
+npm run format:check
+npm run lint
+npm run typecheck
+npm run test:coverage
+npm run build
+npm run test:e2e
 ```
 
 Tests that call a network service must use the `integration` marker and are excluded from the normal test run. Run them only when a milestone explicitly requires live verification.
@@ -52,6 +66,7 @@ uv run pytest -o "addopts=--strict-config --strict-markers" -m integration tests
 ```text
 src/podcast_intelligence/  Application package
 src/podcast_intelligence/ingestion/  Podcast source adapters
+frontend/                  React/Vite/TypeScript browser application
 docs/                       Durable project state and design notes
 tests/                     Unit tests and synthetic fixtures
 tests/integration/         Explicit live-service smoke tests
@@ -94,6 +109,38 @@ uv run podcast-intelligence ask 7 "What are the episode's main evidence-backed c
 
 Place `--database-path /path/to/database.db` before the subcommand to select an alternate local database.
 
+## Local web application
+
+Build the browser application and start the same-origin local server:
+
+```bash
+cd frontend
+npm run build
+cd ..
+uv run podcast-intelligence-web
+```
+
+Open `http://127.0.0.1:8000`. The server binds to loopback only, serves the compiled frontend, and
+keeps SQLite and `OPENAI_API_KEY` on the backend. Episode listing and cached-analysis display are
+offline. Analysis and question requests show a confirmation dialog and also require server-validated
+consent before any transcript content or excerpts can be sent to OpenAI.
+
+For frontend development, run FastAPI and Vite in separate terminals. Vite proxies only `/api` to
+the loopback backend, so no CORS configuration or browser-side secret is needed:
+
+```bash
+uv run podcast-intelligence-web
+```
+
+```bash
+cd frontend
+npm run dev
+```
+
+FastAPI's Pydantic models are the wire-contract source of truth. Regenerate the committed OpenAPI
+schema and TypeScript client types with `npm run api:generate`; `npm run api:check` fails when they
+drift.
+
 ### Live-analysis privacy boundary
 
 A live Milestone 7 evaluation sends the full selected canonical transcript, episode metadata, and subsequent retrieved excerpts to the OpenAI Responses API. `OPENAI_STORE_RESPONSES=false` disables response persistence through the API request, but it does not avoid transmitting that content to OpenAI for processing. The run does not resolve an episode, download audio, or invoke transcription.
@@ -114,6 +161,7 @@ RUN_LIVE_PODCAST_INTELLIGENCE=1 uv run pytest \
 - Keep the SQLite location configurable through `DATABASE_PATH`; its safe ignored default is `data/podcast_intelligence.db`.
 - Keep segmentation, retrieval, tool-loop, output, and context limits centrally configurable through the `INTELLIGENCE_*` settings.
 - Keep reasoning effort configurable through `OPENAI_REASONING_EFFORT`; the initial baseline is `medium`.
+- Keep Responses requests bounded through `OPENAI_RESPONSES_TIMEOUT_SECONDS`; the local default is 600 seconds.
 - Disable API response storage by default through `OPENAI_STORE_RESPONSES=false`.
 - Put future OpenAI SDK calls behind one application-owned client boundary.
 - Use the Responses API for reasoning and podcast-intelligence interactions. Use the Audio Transcriptions API only for bounded speech-to-text ingestion; do not introduce Chat Completions.

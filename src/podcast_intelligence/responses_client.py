@@ -122,7 +122,10 @@ class PodcastResponsesClient:
 
     def __init__(self, settings: Settings, *, client: OpenAI | None = None) -> None:
         self._settings = settings
-        self._client = client or OpenAI(api_key=settings.require_openai_api_key())
+        self._client = client or OpenAI(
+            api_key=settings.require_openai_api_key(),
+            timeout=settings.openai_responses_timeout_seconds,
+        )
 
     def create_text_response(self, prompt: str) -> TextResponse:
         """Create a stored-disabled text response for a non-empty prompt."""

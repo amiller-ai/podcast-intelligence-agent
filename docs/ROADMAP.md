@@ -416,8 +416,6 @@ Out of scope:
 - Diarization, speaker attribution, timestamp reconstruction, or retranscription
 - User interface, hosted database, workers, queues, schedulers, or deployment
 
-## Current
-
 ### Milestone 8 — Local command-line interface
 
 Goal: validate the complete personal workflow through a small local CLI before adding a web
@@ -465,9 +463,7 @@ Completion evidence:
 Out of scope: a local web server, browser UI, deployment, new retrieval architecture, or provider
 SDK objects in presentation code.
 
-## Proposed
-
-These milestones are directional and require approval before becoming current.
+## Current
 
 ### Milestone 9 — Local web application UI
 
@@ -509,23 +505,23 @@ Initial API surface:
 
 Acceptance criteria:
 
-- [ ] Display persisted episodes and current transcription/analysis status without loading or
+- [x] Display persisted episodes and current transcription/analysis status without loading or
   exposing raw transcript text.
-- [ ] Select one transcript run and display its metadata, reusable analysis, limitations, exact
+- [x] Select one transcript run and display its metadata, reusable analysis, limitations, exact
   evidence citations, and cache status through typed FastAPI responses.
-- [ ] Run or refresh analysis only after server-validated transmission consent, preserving the
+- [x] Run or refresh analysis only after server-validated transmission consent, preserving the
   existing cache, history, evidence, and safe-failure contracts.
-- [ ] Ask an evidence-grounded question and render its answer, insufficiency state, exact citations,
+- [x] Ask an evidence-grounded question and render its answer, insufficiency state, exact citations,
   usage summary, and safe observable tool trace without exposing tool arguments or reasoning.
-- [ ] Provide clear loading, empty, confirmation, success, and safe-error states for every initial
+- [x] Provide clear loading, empty, confirmation, success, and safe-error states for every initial
   workflow; prevent duplicate submissions while a request is active.
-- [ ] Keep the frontend same-origin in the built local runtime and use the Vite proxy only for local
+- [x] Keep the frontend same-origin in the built local runtime and use the Vite proxy only for local
   development.
-- [ ] Keep backend and frontend contracts synchronized through OpenAPI-derived TypeScript types and
+- [x] Keep backend and frontend contracts synchronized through OpenAPI-derived TypeScript types and
   deterministic contract tests.
-- [ ] Keep backend tests network-free with injected application/provider boundaries; add frontend
+- [x] Keep backend tests network-free with injected application/provider boundaries; add frontend
   component tests for episode selection, consent, analysis, questions, citations, and errors.
-- [ ] Pass the existing Python quality gates plus the agreed frontend formatting, lint, type-check,
+- [x] Pass the existing Python quality gates plus the agreed frontend formatting, lint, type-check,
   test, and production-build gates before completion.
 
 Implementation slices:
@@ -536,6 +532,32 @@ Implementation slices:
 4. Add consent-gated analysis and question flows with citations, traces, and error states.
 5. Serve the production frontend from FastAPI, run complete offline gates, and document the local
    development and single-command runtime workflows.
+
+Status: complete on 2026-08-20.
+
+Completion evidence:
+
+- Backend and privacy contract: four typed FastAPI routes reuse request-scoped SQLite and existing
+  intelligence boundaries; transcript-safe reads do not select canonical transcript text, literal
+  server consent is bound to the approved transcript run, errors are sanitized, and trusted-host
+  enforcement rejects DNS-rebinding hostnames.
+- Frontend contract: the responsive React/Vite/TypeScript workspace covers list, selection, cached
+  analysis, consent-gated analysis and questions, insufficiency, citations, usage, safe call/response
+  lineage, loading/empty/error states, duplicate prevention, modal focus containment, and dark mode.
+- Contract and runtime: committed OpenAPI-derived TypeScript types passed the deterministic drift
+  check; Vite uses `/api` only as a development proxy, while FastAPI serves the tracked production
+  assets same-origin. An isolated installed-wheel smoke verified the UI root and trusted-host boundary.
+- Offline validation: 229 Python tests passed with 90.78% total coverage; Ruff formatting and lint,
+  strict mypy, and lockfile consistency passed. Fifteen Vitest component/client tests passed with
+  95.32% statement and 87.33% branch coverage; Prettier, Oxlint, TypeScript, `npm ci`, and the
+  production build passed.
+- Browser automation: both deterministic Playwright full-stack tests passed, covering the complete
+  desktop workflow, safe provider failure, no external requests, no sensitive argument rendering,
+  and a 390-pixel responsive viewport. The optional Codex Browser visual pass could not run because
+  no in-app or extension browser instance was connected; this was not represented as passing.
+- Packaging: the 232 KB source archive excludes local Node, coverage, and Playwright artifacts; the
+  wheel includes the compiled UI and passed an isolated install/runtime smoke test.
+- Live calls: none required or performed.
 
 Out of scope:
 
