@@ -1,3 +1,4 @@
+import sqlite3
 from datetime import UTC, datetime
 from decimal import Decimal
 from hashlib import sha256
@@ -15,7 +16,7 @@ from podcast_intelligence.episode_resolution import (
     ResolvedSpotifyEpisode,
     resolve_transcript_sources,
 )
-from podcast_intelligence.intelligence import analyze_episode
+from podcast_intelligence.intelligence import analyze_episode, answer_episode_question
 from podcast_intelligence.intelligence_models import (
     AnalysisEvidence,
     EpisodeAnalysis,
@@ -26,6 +27,7 @@ from podcast_intelligence.persistence import TranscriptStore
 from podcast_intelligence.responses_client import (
     EpisodeAnalysisResponse,
     PodcastResponsesClient,
+    QuestionResponse,
     ResponsesClientError,
     ResponseUsageSummary,
 )
@@ -166,6 +168,74 @@ def test_analysis_pipeline_reuses_cache_without_second_provider_call(tmp_path: P
     assert second.cache_status == "analysis"
     assert second.analysis.run_id == first.analysis.run_id
     assert client.create_episode_analysis.call_count == 1
+
+
+def test_cached_analysis_can_be_read_without_provider_credentials(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    path = tmp_path / "offline-analysis-cache.db"
+    client = _client()
+    with TranscriptStore(path) as store:
+        transcript_run_id = _persist_transcript(store)
+        first = analyze_episode(
+            transcript_run_id,
+            settings=_settings(path),
+            store=store,
+            responses_client=client,
+        )
+        cached = analyze_episode(
+            transcript_run_id,
+            settings=Settings(_env_file=None, database_path=path),
+            store=store,
+        )
+
+    assert cached.cache_status == "analysis"
+    assert cached.analysis.run_id == first.analysis.run_id
+
+
+def test_missing_credentials_do_not_create_analysis_attempt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    path = tmp_path / "missing-analysis-credentials.db"
+    with TranscriptStore(path) as store:
+        transcript_run_id = _persist_transcript(store)
+        with pytest.raises(ValueError, match="OPENAI_API_KEY is required"):
+            analyze_episode(
+                transcript_run_id,
+                settings=Settings(_env_file=None, database_path=path),
+                store=store,
+            )
+
+        with sqlite3.connect(path) as connection:
+            count = connection.execute("SELECT COUNT(*) FROM analysis_runs").fetchone()
+
+    assert count == (0,)
+
+
+def test_question_service_uses_only_selected_persisted_transcript(tmp_path: Path) -> None:
+    path = tmp_path / "question-service.db"
+    client = Mock(spec=PodcastResponsesClient)
+    expected = Mock(spec=QuestionResponse)
+    client.answer_question.return_value = expected
+    with TranscriptStore(path) as store:
+        transcript_run_id = _persist_transcript(store)
+        result = answer_episode_question(
+            transcript_run_id,
+            "What makes evaluation measurable?",
+            settings=_settings(path),
+            store=store,
+            responses_client=client,
+        )
+
+    assert result is expected
+    client.answer_question.assert_called_once()
+    question, tools = client.answer_question.call_args.args
+    assert question == "What makes evaluation measurable?"
+    assert tools.transcript.run_id == transcript_run_id
 
 
 def test_refresh_and_model_change_preserve_prior_successful_history(tmp_path: Path) -> None:

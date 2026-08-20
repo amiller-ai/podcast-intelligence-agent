@@ -15,7 +15,11 @@ from podcast_intelligence.persistence import (
     StoredEpisodeAnalysis,
     TranscriptStore,
 )
-from podcast_intelligence.responses_client import PodcastResponsesClient, ResponsesClientError
+from podcast_intelligence.responses_client import (
+    PodcastResponsesClient,
+    QuestionResponse,
+    ResponsesClientError,
+)
 from podcast_intelligence.retrieval import TranscriptTools
 from podcast_intelligence.settings import Settings
 
@@ -60,6 +64,7 @@ def analyze_episode(
         if cached is not None:
             return EpisodeIntelligenceResult(analysis=cached, cache_status="analysis")
 
+    client = responses_client or PodcastResponsesClient(settings)
     run_id = store.create_analysis_run(
         transcript,
         analysis_type=ANALYSIS_TYPE,
@@ -69,7 +74,6 @@ def analyze_episode(
         segmenter_version=SEGMENTER_VERSION,
     )
     store.mark_analysis_running(run_id)
-    client = responses_client or PodcastResponsesClient(settings)
     try:
         response = client.create_episode_analysis(transcript, tools.segments)
         stored = store.persist_analysis_success(
@@ -96,3 +100,24 @@ def analyze_episode(
             )
         raise
     return EpisodeIntelligenceResult(analysis=stored, cache_status="miss")
+
+
+def answer_episode_question(
+    transcript_run_id: int,
+    question: str,
+    *,
+    settings: Settings,
+    store: TranscriptStore,
+    responses_client: PodcastResponsesClient | None = None,
+) -> QuestionResponse:
+    """Answer from one persisted transcript without invoking ingestion or transcription."""
+
+    transcript = store.get_transcript(transcript_run_id)
+    tools = TranscriptTools(
+        store,
+        transcript,
+        settings,
+        segmenter_version=SEGMENTER_VERSION,
+    )
+    client = responses_client or PodcastResponsesClient(settings)
+    return client.answer_question(question, tools)

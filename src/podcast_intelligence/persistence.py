@@ -99,6 +99,19 @@ class StoredEpisodeAnalysis:
 
 
 @dataclass(frozen=True, slots=True)
+class EpisodeStatus:
+    """Privacy-preserving local status projection without transcript content."""
+
+    episode_id: int
+    spotify_episode_id: str | None
+    title: str
+    latest_transcription_status: str | None
+    transcript_run_id: int | None
+    analysis_available: bool
+    latest_analysis_status: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class _Migration:
     version: int
     statements: tuple[str, ...]
@@ -1188,6 +1201,91 @@ class TranscriptStore:
             "SELECT id FROM analysis_runs WHERE status = 'succeeded' ORDER BY id"
         ).fetchall()
         return tuple(self.get_analysis(int(row["id"])) for row in rows)
+
+    def list_episode_statuses(self) -> tuple[EpisodeStatus, ...]:
+        """List local episode state without loading or returning transcript text."""
+
+        rows = self._connection.execute(
+            """
+            SELECT
+                e.id AS episode_id,
+                e.spotify_episode_id,
+                e.title,
+                (
+                    SELECT r.status
+                    FROM transcription_runs r
+                    WHERE r.episode_id = e.id
+                    ORDER BY r.id DESC
+                    LIMIT 1
+                ) AS latest_transcription_status,
+                (
+                    SELECT r.id
+                    FROM transcription_runs r
+                    WHERE r.episode_id = e.id AND r.status = 'succeeded'
+                    ORDER BY r.id DESC
+                    LIMIT 1
+                ) AS transcript_run_id,
+                EXISTS (
+                    SELECT 1
+                    FROM analysis_runs a
+                    JOIN transcripts t ON t.id = a.transcript_id
+                    JOIN transcription_runs r ON r.id = t.run_id
+                    WHERE r.episode_id = e.id AND r.status = 'succeeded'
+                      AND a.status = 'succeeded'
+                      AND r.id = (
+                          SELECT r2.id
+                          FROM transcription_runs r2
+                          WHERE r2.episode_id = e.id AND r2.status = 'succeeded'
+                          ORDER BY r2.id DESC
+                          LIMIT 1
+                      )
+                ) AS analysis_available,
+                (
+                    SELECT a.status
+                    FROM analysis_runs a
+                    JOIN transcripts t ON t.id = a.transcript_id
+                    JOIN transcription_runs r ON r.id = t.run_id
+                    WHERE r.episode_id = e.id AND r.status = 'succeeded'
+                      AND r.id = (
+                          SELECT r2.id
+                          FROM transcription_runs r2
+                          WHERE r2.episode_id = e.id AND r2.status = 'succeeded'
+                          ORDER BY r2.id DESC
+                          LIMIT 1
+                      )
+                    ORDER BY r.id DESC, a.id DESC
+                    LIMIT 1
+                ) AS latest_analysis_status
+            FROM episodes e
+            ORDER BY e.id
+            """
+        ).fetchall()
+        return tuple(
+            EpisodeStatus(
+                episode_id=int(row["episode_id"]),
+                spotify_episode_id=(
+                    str(row["spotify_episode_id"])
+                    if row["spotify_episode_id"] is not None
+                    else None
+                ),
+                title=str(row["title"]),
+                latest_transcription_status=(
+                    str(row["latest_transcription_status"])
+                    if row["latest_transcription_status"] is not None
+                    else None
+                ),
+                transcript_run_id=(
+                    int(row["transcript_run_id"]) if row["transcript_run_id"] is not None else None
+                ),
+                analysis_available=bool(row["analysis_available"]),
+                latest_analysis_status=(
+                    str(row["latest_analysis_status"])
+                    if row["latest_analysis_status"] is not None
+                    else None
+                ),
+            )
+            for row in rows
+        )
 
     def analysis_run_status(self, run_id: int) -> str:
         row = self._connection.execute(

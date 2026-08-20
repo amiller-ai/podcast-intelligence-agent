@@ -308,6 +308,34 @@ def test_success_round_trip_preserves_parts_usage_hashes_and_cache_keys(
     assert audio_cached is not None and audio_cached.run_id == run_id
 
 
+def test_episode_status_projection_omits_content_and_tracks_latest_attempts(
+    tmp_path: Path,
+) -> None:
+    with TranscriptStore(tmp_path / "status.db") as store:
+        episode = store.upsert_episode(_resolved(title="Status\nEpisode"))
+        before_run = store.list_episode_statuses()
+        run_id = store.create_run(
+            episode,
+            provider="openai",
+            model="gpt-transcribe",
+            chunker_version=CHUNKER_VERSION,
+            prompt_version=TRANSCRIPTION_PROMPT_VERSION,
+            estimated_cost_microusd=135_000,
+        )
+        store.mark_running(run_id)
+        while_running = store.list_episode_statuses()
+        store.mark_failed(run_id, error_code="SyntheticFailure", safe_message="safe")
+        after_failure = store.list_episode_statuses()
+
+    assert before_run[0].latest_transcription_status is None
+    assert before_run[0].transcript_run_id is None
+    assert while_running[0].latest_transcription_status == "running"
+    assert after_failure[0].latest_transcription_status == "failed"
+    assert after_failure[0].analysis_available is False
+    assert after_failure[0].latest_analysis_status is None
+    assert not hasattr(after_failure[0], "text")
+
+
 def test_segments_and_fts_are_deterministic_rebuildable_and_transcript_scoped(
     tmp_path: Path,
 ) -> None:
@@ -419,11 +447,16 @@ def test_analysis_success_round_trip_evidence_links_and_cache_identity(tmp_path:
             schema_version="1",
             segmenter_version="test-segmenter-v1",
         )
+        status = store.list_episode_statuses()[0]
 
     assert stored.analysis == analysis
     assert stored.response_id == "resp_analysis"
     assert stored.total_tokens == 150
     assert cached is not None and cached.run_id == run_id
+    assert status.transcript_run_id == transcript_run_id
+    assert status.latest_transcription_status == "succeeded"
+    assert status.analysis_available is True
+    assert status.latest_analysis_status == "succeeded"
     assert stored.cache_identity == analysis_identity(
         transcript_content_hash=transcript.content_hash,
         analysis_type="episode_intelligence",

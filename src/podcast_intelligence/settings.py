@@ -20,7 +20,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    openai_api_key: SecretStr
+    openai_api_key: SecretStr | None = None
     openai_model: str = "gpt-5.6-sol"
     openai_reasoning_effort: ReasoningEffort = "medium"
     openai_store_responses: bool = False
@@ -39,10 +39,17 @@ class Settings(BaseSettings):
 
     @field_validator("openai_api_key")
     @classmethod
-    def api_key_must_not_be_empty(cls, value: SecretStr) -> SecretStr:
-        if not value.get_secret_value().strip():
+    def api_key_must_not_be_empty(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is not None and not value.get_secret_value().strip():
             raise ValueError("OPENAI_API_KEY must not be empty")
         return value
+
+    def require_openai_api_key(self) -> str:
+        """Return the configured key only at a provider-bound operation."""
+
+        if self.openai_api_key is None:
+            raise ValueError("OPENAI_API_KEY is required for OpenAI requests")
+        return self.openai_api_key.get_secret_value()
 
     @field_validator("openai_model")
     @classmethod

@@ -129,6 +129,27 @@ def _settings(path: Path) -> Settings:
     return Settings.model_validate({"openai_api_key": "test-key", "database_path": path})
 
 
+def test_missing_provider_credentials_do_not_create_transcription_run(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    path = tmp_path / "missing-provider-credentials.db"
+    with TranscriptStore(path) as store:
+        with pytest.raises(ValueError, match="OPENAI_API_KEY is required"):
+            ingest_spotify_episode(
+                _SPOTIFY_URL,
+                settings=Settings(_env_file=None, database_path=path),
+                authorized=True,
+                store=store,
+                episode_resolver=lambda _url: _resolved(),
+            )
+        with sqlite3.connect(path) as connection:
+            run_count = connection.execute("SELECT COUNT(*) FROM transcription_runs").fetchone()
+
+    assert run_count == (0,)
+
+
 def test_pipeline_miss_then_source_cache_skips_audio_and_provider(tmp_path: Path) -> None:
     path = tmp_path / "pipeline.db"
     settings = _settings(path)

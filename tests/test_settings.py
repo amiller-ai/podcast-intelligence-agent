@@ -10,6 +10,7 @@ from podcast_intelligence.settings import Settings
 def test_settings_have_safe_explicit_defaults() -> None:
     settings = Settings.model_validate({"openai_api_key": "test-key"})
 
+    assert settings.openai_api_key is not None
     assert settings.openai_api_key.get_secret_value() == "test-key"
     assert settings.openai_model == "gpt-5.6-sol"
     assert settings.openai_reasoning_effort == "medium"
@@ -79,6 +80,15 @@ def test_secret_is_redacted_from_settings_representation() -> None:
     settings = Settings.model_validate({"openai_api_key": "do-not-display"})
 
     assert "do-not-display" not in repr(settings)
+
+
+def test_settings_allow_offline_use_without_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    settings = Settings(_env_file=None)
+
+    assert settings.openai_api_key is None
+    with pytest.raises(ValueError, match="OPENAI_API_KEY is required"):
+        settings.require_openai_api_key()
 
 
 def test_settings_accept_database_path_override(tmp_path: Path) -> None:

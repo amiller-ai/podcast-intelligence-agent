@@ -116,6 +116,7 @@ def ingest_spotify_episode(
             resolved.episode.duration_seconds or 0,
             price_per_minute_usd=settings.openai_transcription_cost_per_minute_usd,
         )
+        active_transcriber = provider_transcriber or OpenAIAudioTranscriber(settings)
         run_id = active_store.create_run(
             episode,
             provider="openai",
@@ -129,7 +130,7 @@ def ingest_spotify_episode(
             store=active_store,
             episode=episode,
             model=settings.openai_transcription_model,
-            delegate=provider_transcriber or OpenAIAudioTranscriber(settings),
+            delegate=active_transcriber,
         )
         try:
             audio_arguments: dict[str, object] = {

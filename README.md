@@ -4,7 +4,7 @@ A personal application for turning podcast content into searchable, useful intel
 
 ## Project status
 
-Milestone 7 adds deterministic transcript segmentation, rebuildable SQLite FTS5 retrieval, bounded read-only model tools, evidence-grounded question answering, and versioned Structured Output analysis over the persisted transcripts from Milestone 6. The offline suite and one explicitly authorized live evaluation are validated. See the [`docs/ROADMAP.md`](docs/ROADMAP.md) source of truth for completion evidence and proposed work.
+Milestone 8 adds a small local CLI for listing persisted episode state, running or reusing structured analysis, and asking evidence-grounded questions. It reuses the Milestone 7 SQLite, retrieval, evidence-validation, and Responses boundaries without adding ingestion, transcription, or a web framework. See the [`docs/ROADMAP.md`](docs/ROADMAP.md) source of truth for completion evidence and proposed work.
 
 ## Development setup
 
@@ -12,7 +12,7 @@ Prerequisites:
 
 - Python 3.12
 - [`uv`](https://docs.astral.sh/uv/)
-- An OpenAI API key for later live-integration milestones
+- An OpenAI API key for commands that send transcript content or excerpts to OpenAI
 
 Install the project and its development dependencies:
 
@@ -74,6 +74,25 @@ Milestone 7 derives exact-offset transcript segments and an FTS5 index from each
 Structured analyses are persisted only after their schema, transcript ownership, segment IDs, and exact quoted evidence pass deterministic validation. Analysis cache identity includes the transcript hash, requested model, prompt version, schema version, and segmenter version. Explicit refreshes preserve prior successful analysis history.
 
 The committed 20-case synthetic evaluation corpus keeps retrieval, tool decisions, call lineage, final-answer evidence, structured analysis, and operational diagnostics separately observable. It runs within the default offline suite and does not send transcript content to a provider.
+
+## Local command-line interface
+
+List persisted episode, transcript, and analysis state without loading or printing transcript text:
+
+```bash
+uv run podcast-intelligence list
+```
+
+Use the reported transcript run ID to create or reuse structured analysis, or ask a question:
+
+```bash
+uv run podcast-intelligence analyze 7
+uv run podcast-intelligence ask 7 "What are the episode's main evidence-backed claims?"
+```
+
+`analyze` and `ask` request explicit confirmation because they may transmit selected transcript content or excerpts to OpenAI. Pass `--yes` only when that transmission has already been approved. A cached analysis can be reused without an API key; a cache miss and every question require `OPENAI_API_KEY`. These commands never resolve an episode, download audio, or invoke transcription.
+
+Place `--database-path /path/to/database.db` before the subcommand to select an alternate local database.
 
 ### Live-analysis privacy boundary
 

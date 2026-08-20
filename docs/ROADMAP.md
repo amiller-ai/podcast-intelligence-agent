@@ -233,8 +233,6 @@ Out of scope:
 - Multi-process workers, queues, schedulers, hosted databases, replication, or deployment
 - User interface changes
 
-## Current
-
 ### Milestone 7 — Evidence-grounded podcast intelligence
 
 Goal: turn one persisted canonical transcript into reproducible structured intelligence and evidence-grounded question answering through the Responses API, using bounded local SQLite retrieval without introducing embeddings, a hosted vector store, arbitrary SQL generation, or multi-agent orchestration.
@@ -418,10 +416,61 @@ Out of scope:
 - Diarization, speaker attribution, timestamp reconstruction, or retranscription
 - User interface, hosted database, workers, queues, schedulers, or deployment
 
+## Current
+
+### Milestone 8 — Local command-line interface
+
+Goal: validate the complete personal workflow through a small local CLI before adding a web
+framework or browser interface.
+
+Acceptance criteria:
+
+- [x] List persisted episodes and their transcript and analysis status without exposing raw transcript
+  content by default.
+- [x] Select one episode, run or reuse its structured analysis, and ask evidence-grounded questions
+  through the existing application services.
+- [x] Render answers, exact evidence citations, cache status, safe errors, and an observable trace
+  summary without exposing encrypted reasoning or secrets.
+- [x] Require an explicit confirmation before any command that may transmit transcript content or
+  retrieved excerpts to OpenAI; do not implicitly download audio or retranscribe an episode.
+- [x] Keep command behavior deterministic and network-free in the default tests by injecting the
+  existing persistence, retrieval, and Responses boundaries.
+- [x] Pass all repository quality gates, lockfile consistency, and source/wheel builds.
+
+Status: complete on 2026-08-20.
+
+Completion evidence:
+
+- Command contract: the dependency-free `podcast-intelligence` console entry point provides
+  `list`, `analyze TRANSCRIPT_RUN_ID`, and `ask TRANSCRIPT_RUN_ID QUESTION`; selection uses durable
+  transcript-run identity rather than a mutable title.
+- Local-state contract: `list` uses a typed SQLite status projection that never selects or hydrates
+  transcript text and separately reports the latest transcription attempt, usable transcript,
+  successful analysis availability, and latest analysis attempt.
+- Provider and privacy contract: `analyze` and `ask` require an interactive confirmation or
+  explicit `--yes`; they reuse the existing persistence, analysis, retrieval, and Responses
+  boundaries and expose no ingestion or transcription command. Untrusted terminal text is escaped,
+  and observable traces omit tool arguments, provider objects, and encrypted reasoning.
+- Offline contract: listing and cached analysis reuse do not require an API key. Provider adapters
+  require `OPENAI_API_KEY` only when constructed for a provider-bound operation, and a missing key
+  creates no partial analysis or transcription run.
+- Validation: 218 deterministic offline tests passed with 91.43% total coverage; Ruff formatting
+  and linting, strict mypy, lockfile consistency, source/wheel builds, and an installed console help
+  smoke test all passed.
+- Live calls: none required or performed.
+
+Out of scope: a local web server, browser UI, deployment, new retrieval architecture, or provider
+SDK objects in presentation code.
+
 ## Proposed
 
 These milestones are directional and require approval before becoming current.
 
-### Milestone 8 — Personal application interface
+### Milestone 9 — Local web application UI
 
-Choose a minimal interface based on the validated workflow, then expose ingestion status, episode selection, analysis results, and errors without coupling the UI to provider SDK objects.
+Goal: after the CLI validates the user workflow and presentation contracts, add a minimal local
+web application for episode selection, ingestion and analysis status, questions and answers,
+evidence inspection, trace summaries, and safe errors.
+
+The web UI must reuse the same application-owned services and typed presentation contracts proven
+by the CLI rather than duplicating persistence, retrieval, tool-loop, or provider logic.

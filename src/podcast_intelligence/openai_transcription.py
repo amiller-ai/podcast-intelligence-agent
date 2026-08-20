@@ -126,7 +126,7 @@ class OpenAIAudioTranscriber:
     ) -> None:
         self._model = settings.openai_transcription_model
         self._client = client or OpenAI(
-            api_key=settings.openai_api_key.get_secret_value(),
+            api_key=settings.require_openai_api_key(),
             timeout=settings.openai_transcription_timeout_seconds,
         )
         self._chunker = chunker or FfmpegAudioChunker()
