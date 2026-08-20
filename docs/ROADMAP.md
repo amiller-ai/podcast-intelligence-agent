@@ -471,9 +471,80 @@ These milestones are directional and require approval before becoming current.
 
 ### Milestone 9 — Local web application UI
 
-Goal: after the CLI validates the user workflow and presentation contracts, add a minimal local
-web application for episode selection, ingestion and analysis status, questions and answers,
-evidence inspection, trace summaries, and safe errors.
+Goal: turn the CLI-proven workflow into a minimal local full-stack application with a FastAPI
+backend and a React/Vite/TypeScript frontend, without changing the underlying ingestion,
+persistence, retrieval, evidence, or Responses behavior.
 
-The web UI must reuse the same application-owned services and typed presentation contracts proven
-by the CLI rather than duplicating persistence, retrieval, tool-loop, or provider logic.
+Architecture decisions:
+
+- Use FastAPI as a thin application-owned HTTP boundary over the existing services. Route handlers
+  validate transport contracts, enforce authorization, translate safe application errors, and
+  return typed presentation models; they do not contain retrieval, persistence, prompt, or provider
+  logic.
+- Use React, Vite, and TypeScript for the browser UI. Keep frontend state local and explicit rather
+  than adding a global state framework before demonstrated need.
+- Keep SQLite and `OPENAI_API_KEY` exclusively on the backend. The browser never receives a database
+  path, API key, provider SDK object, encrypted reasoning item, arbitrary SQL capability, or raw
+  transcript by default.
+- Use Pydantic request/response models as the HTTP source of truth and keep TypeScript API types
+  synchronized from the generated OpenAPI schema. Do not maintain independent hand-written versions
+  of the same wire contract.
+- Run Vite and FastAPI as separate development processes with a Vite `/api` proxy. For the packaged
+  local application, have FastAPI serve the compiled frontend so the runtime is same-origin and
+  requires one local server command.
+- Keep analysis and question requests synchronous for the first slice, with bounded server timeouts
+  and explicit browser loading/error states. Defer background jobs, WebSockets, and streaming until
+  measured latency or cancellation needs justify them.
+- Require transmission consent on the server for every provider-bound request. The React confirmation
+  dialog is presentation support, not the authorization boundary.
+
+Initial API surface:
+
+| Method | Route | Purpose |
+| --- | --- | --- |
+| `GET` | `/api/episodes` | List transcript-safe episode, transcription, and analysis status |
+| `GET` | `/api/episodes/{transcript_run_id}` | Load selected episode metadata and any reusable analysis |
+| `POST` | `/api/episodes/{transcript_run_id}/analysis` | Run or reuse structured analysis with explicit consent and optional refresh |
+| `POST` | `/api/episodes/{transcript_run_id}/questions` | Ask one evidence-grounded question with explicit consent |
+
+Acceptance criteria:
+
+- [ ] Display persisted episodes and current transcription/analysis status without loading or
+  exposing raw transcript text.
+- [ ] Select one transcript run and display its metadata, reusable analysis, limitations, exact
+  evidence citations, and cache status through typed FastAPI responses.
+- [ ] Run or refresh analysis only after server-validated transmission consent, preserving the
+  existing cache, history, evidence, and safe-failure contracts.
+- [ ] Ask an evidence-grounded question and render its answer, insufficiency state, exact citations,
+  usage summary, and safe observable tool trace without exposing tool arguments or reasoning.
+- [ ] Provide clear loading, empty, confirmation, success, and safe-error states for every initial
+  workflow; prevent duplicate submissions while a request is active.
+- [ ] Keep the frontend same-origin in the built local runtime and use the Vite proxy only for local
+  development.
+- [ ] Keep backend and frontend contracts synchronized through OpenAPI-derived TypeScript types and
+  deterministic contract tests.
+- [ ] Keep backend tests network-free with injected application/provider boundaries; add frontend
+  component tests for episode selection, consent, analysis, questions, citations, and errors.
+- [ ] Pass the existing Python quality gates plus the agreed frontend formatting, lint, type-check,
+  test, and production-build gates before completion.
+
+Implementation slices:
+
+1. Define presentation models and deterministic FastAPI route tests over injected existing services.
+2. Scaffold the React/Vite/TypeScript application and generated API types without adding product UI.
+3. Build episode listing, selection, and cached-analysis display.
+4. Add consent-gated analysis and question flows with citations, traces, and error states.
+5. Serve the production frontend from FastAPI, run complete offline gates, and document the local
+   development and single-command runtime workflows.
+
+Out of scope:
+
+- Triggering episode resolution, audio download, transcription, upload, or transcript editing from
+  the browser
+- Authentication, multi-user isolation, remote access, deployment, hosted storage, or secrets in the
+  frontend
+- Background workers, queues, schedulers, WebSockets, server-sent events, or streaming token output
+- New retrieval architecture, embeddings, vector stores, cross-episode synthesis, or external web
+  research
+- A component library, global state framework, or design system before the initial workflow shows a
+  concrete need
