@@ -28,6 +28,14 @@ class Settings(BaseSettings):
     openai_transcription_cost_per_minute_usd: Decimal = Decimal("0.0045")
     openai_transcription_timeout_seconds: float = 600.0
     database_path: Path = Path("data/podcast_intelligence.db")
+    intelligence_segment_chars: int = 1_600
+    intelligence_max_query_chars: int = 400
+    intelligence_max_search_results: int = 5
+    intelligence_max_read_segments: int = 8
+    intelligence_max_tool_output_chars: int = 16_000
+    intelligence_max_tool_calls: int = 6
+    intelligence_max_output_tokens: int = 8_000
+    intelligence_max_analysis_chars: int = 250_000
 
     @field_validator("openai_api_key")
     @classmethod
@@ -69,6 +77,29 @@ class Settings(BaseSettings):
     def database_path_must_name_a_file(cls, value: Path) -> Path:
         if not value.name or value.name in {".", ".."}:
             raise ValueError("DATABASE_PATH must name a database file")
+        return value
+
+    @field_validator(
+        "intelligence_segment_chars",
+        "intelligence_max_query_chars",
+        "intelligence_max_search_results",
+        "intelligence_max_read_segments",
+        "intelligence_max_tool_output_chars",
+        "intelligence_max_tool_calls",
+        "intelligence_max_output_tokens",
+        "intelligence_max_analysis_chars",
+    )
+    @classmethod
+    def intelligence_limits_must_be_positive(cls, value: int) -> int:
+        if value <= 0:
+            raise ValueError("intelligence limits must be positive")
+        return value
+
+    @field_validator("intelligence_segment_chars")
+    @classmethod
+    def intelligence_segments_must_be_large_enough(cls, value: int) -> int:
+        if value < 64:
+            raise ValueError("INTELLIGENCE_SEGMENT_CHARS must be at least 64")
         return value
 
 

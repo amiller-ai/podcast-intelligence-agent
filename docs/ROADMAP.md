@@ -262,6 +262,34 @@ Successful canonical transcript in SQLite
   -> versioned analysis persistence in SQLite
 ```
 
+Test-driven implementation plan:
+
+- Work in vertical slices. Each slice begins with a failing contract test, adds the
+  smallest production behavior needed to pass it, then refactors only while that slice
+  and all earlier slices remain green.
+- Slice 0 — evaluation contract: create a small committed synthetic corpus and typed
+  evaluation cases before prompt tuning. Each case records the selected episode, question
+  or analysis request, gold segment IDs, reference facts, whether abstention is required,
+  and required, allowed, and forbidden tool behavior.
+- Slice 1 — retrieval foundation: test and add the schema migration, deterministic
+  segment offsets and hashes, idempotent rebuild, FTS5 availability, ranking, and
+  cross-episode isolation.
+- Slice 2 — read-only tools: test and add typed metadata, search, and segment-read
+  functions, including every identifier, query, result-count, and returned-character
+  boundary before exposing their strict JSON schemas to a model.
+- Slice 3 — stateless tool loop: drive the loop with scripted Responses fixtures covering
+  a direct answer, one call, multiple sequential calls, invalid JSON, unknown tools,
+  duplicate and mismatched call IDs, provider failure, incomplete output, and limit
+  exhaustion before making any live call.
+- Slice 4 — structured analysis: test the Structured Output schema and deterministic
+  evidence validator first, then add the prompt and Responses call. Schema-valid but
+  unsupported content must fail closed.
+- Slice 5 — analysis history: test migrations, atomic success, safe failure, cache reuse,
+  refresh, identity changes, and rollback before implementing persistence.
+- Slice 6 — evaluation and live proof: run the complete offline corpus and repository
+  gates, then perform one separately authorized evaluation against an already-persisted
+  episode. Do not retrieve audio or transcribe during this slice.
+
 Segmentation and retrieval contract:
 
 - Do not use transcription provider parts as retrieval units; they reflect upload chunking rather than stable semantic boundaries.
@@ -277,7 +305,13 @@ Segmentation and retrieval contract:
 Responses API and tool-loop contract:
 
 - Define tools with strict schemas and `additionalProperties: false`; validate every tool call again in application code before executing it.
-- Preserve complete Responses output items during each loop, preserve every function call ID, and return tool results through the matching call ID without flattening state lineage into plain text.
+- Keep the loop stateless with `store=false`. Request encrypted reasoning content, retain
+  every returned output item in order, append each `function_call_output` with its exact
+  `call_id`, and replay the complete item sequence on the next request. Do not replace this
+  lineage with `previous_response_id` or flattened text.
+- Treat reasoning items as opaque continuity state. Replay them, but do not inspect, grade,
+  log, or persist encrypted reasoning or private chain-of-thought. Evaluate observable
+  decisions, tool calls, retrieved evidence, and outputs instead.
 - Apply explicit limits to tool-call count, query length, result count, segment count, and total returned characters. Convert invalid arguments, unknown IDs, policy violations, and provider failures into safe application-owned errors.
 - Keep tool execution sequential initially. Parallel or programmatic tool calling requires separate evidence that it improves the bounded single-episode workflow.
 - Produce a final answer only from returned evidence and include stable application citations to transcript and segment IDs. The model must state when evidence is insufficient.
@@ -300,31 +334,80 @@ Minimum relational extension:
 | `episode_analyses` | Validated canonical Structured Output linked to one successful analysis run |
 | `analysis_evidence` | Claim/insight evidence links to exact transcript segments and quotes |
 
+Evaluation contract:
+
+Evaluate each surface separately so a fluent answer cannot hide a retrieval or tool failure.
+The committed offline cases and local runner are the release source of truth; a hosted eval
+service is not required.
+
+| Surface | What is recorded | Release grading |
+| --- | --- | --- |
+| Retrieval | Query, ranked segment IDs, scores, gold segment IDs, and episode identity | Exact deterministic tests; on the known-answer set report hit rate, recall at 5, reciprocal rank, and every miss separately |
+| Agent decision | Whether a tool was needed, required/allowed/forbidden calls, abstention, and prompt-injection resistance | Tool-selection and abstention classification; do not require one exact call sequence when multiple bounded traces are valid |
+| Tool calls and trace | Output item order, response IDs, item types, tool names, validated arguments, call IDs, result segment IDs, errors, and limit counters | 100% valid schemas and call-ID pairing; zero unknown, write-capable, cross-episode, over-limit, or unreturned calls |
+| Final Q&A response | Answer, cited transcript/segment IDs, exact supporting excerpts, reference facts, and insufficiency behavior | 100% citation validity and claim support; score correctness and completeness separately from retrieval; unsupported claims fail the case |
+| Structured episode analysis | Parsed output, field-level schema results, evidence links, exact quotes, reference facts, and limitations | 100% schema validity, evidence ownership, exact quote matching, and evidence coverage for every material claim and actionable insight |
+| Operational behavior | Model/prompt/schema/segmenter versions, response IDs, usage, tool-call count, returned characters, latency, and safe error code | Enforce configured budgets; report tokens, latency, and estimated cost as diagnostics rather than quality proxies |
+
 Evaluation and release gates:
 
-- Build deterministic synthetic fixtures covering segmentation, FTS ranking, bounded tools, invalid IDs, episode isolation, prompt injection inside transcript text, tool-loop state lineage, schema failures, provider failures, and persistence rollback.
-- Require 100% schema-valid outputs, existing segment references, exact quote matches, and evidence coverage for every material claim and actionable insight in the evaluation set.
-- Define a small known-answer question set before prompt tuning. Record retrieval results separately from answer groundedness so model synthesis cannot hide retrieval misses.
-- Test cache hit, cache miss, explicit refresh, prompt/schema/model version changes, and transcript-hash changes without network access.
-- Keep the default suite deterministic and network-free with injected or mocked Responses and retrieval boundaries.
-- Complete one explicit live evaluation on one user-selected already-persisted episode after credentials and authorization are confirmed. It must not download audio or retranscribe the episode, and its result must pass the same schema and exact-evidence gates before persistence.
-- Pass all repository quality gates, lockfile consistency, and a package build before completion.
+- Build deterministic synthetic fixtures covering segmentation, FTS ranking, bounded tools,
+  invalid IDs, episode isolation, prompt injection inside transcript text, tool-loop state
+  lineage, schema failures, provider failures, cache identity, and persistence rollback.
+- Define at least 20 evaluation cases before prompt tuning, spanning direct metadata,
+  answerable lexical retrieval, multi-segment synthesis, insufficient evidence, ambiguous
+  wording, transcript prompt injection, and invalid or cross-episode access attempts.
+- For the deterministic corpus, require 100% segmentation, tool-policy, call-lineage,
+  schema, evidence, isolation, and persistence checks. For model-bearing known-answer cases,
+  require retrieval recall at 5 of at least 90%, answer correctness of at least 90%, and
+  100% citation support and correct abstention. Report the numerator, denominator, and case
+  failures rather than only an aggregate score.
+- Use deterministic validators for schemas, identifiers, bounds, hashes, exact quotes,
+  evidence coverage, and tool traces. A rubric-based model grader may supplement relevance,
+  completeness, and usefulness only after agreement is checked against human-reviewed
+  labels; it cannot override a deterministic failure. Prefer pairwise grading for prompt or
+  model comparisons.
+- Test cache hit, cache miss, explicit refresh, prompt/schema/model version changes, and
+  transcript-hash changes without network access.
+- Keep the default suite deterministic and network-free with injected or mocked Responses
+  and retrieval boundaries. The live evaluation is an explicit integration run, not part of
+  the default suite and not evidence of broad production reliability.
+- Complete one explicit live evaluation on one user-selected already-persisted episode
+  after credentials and authorization are confirmed. It must not download audio or
+  retranscribe the episode, and its result must pass the same schema and exact-evidence
+  gates before persistence.
+- Pass all repository quality gates, lockfile consistency, and a package build before
+  completion.
 
 Acceptance criteria:
 
-- [ ] Add deterministic transcript segmentation and a rebuildable SQLite FTS5 index tied to canonical transcript and segmenter identities.
-- [ ] Add typed, bounded, read-only metadata, search, and segment-read boundaries without exposing arbitrary SQL or database handles.
-- [ ] Extend the Responses API boundary with a strict application-owned function-tool loop that preserves complete response items, call IDs, tool outputs, and state lineage.
-- [ ] Add the typed Structured Output contract for summaries, topics, people, claims, evidence, actionable insights, and limitations.
-- [ ] Enforce exact evidence ownership and quote matching before returning or persisting intelligence results.
-- [ ] Persist versioned analysis attempts, validated outputs, evidence links, response IDs, usage metadata, and safe failures transactionally.
-- [ ] Make successful analysis reuse idempotent across transcript, model, prompt, schema, and segmenter identities while preserving refresh history.
-- [ ] Treat transcripts as untrusted content, keep provider response storage disabled by default, and document analysis-data sensitivity and retention.
-- [ ] Add the deterministic retrieval, tool-loop, Structured Output, persistence, failure, cache, and evaluation coverage defined above.
-- [ ] Complete the authorized live evaluation without audio retrieval or retranscription and show the validated persisted result.
-- [ ] Pass all repository quality gates, lockfile consistency, and a package build.
+- [x] Add deterministic transcript segmentation and a rebuildable SQLite FTS5 index tied to canonical transcript and segmenter identities.
+- [x] Add typed, bounded, read-only metadata, search, and segment-read boundaries without exposing arbitrary SQL or database handles.
+- [x] Extend the Responses API boundary with a strict application-owned function-tool loop that preserves complete response items, call IDs, tool outputs, and state lineage.
+- [x] Add the typed Structured Output contract for summaries, topics, people, claims, evidence, actionable insights, and limitations.
+- [x] Enforce exact evidence ownership and quote matching before returning or persisting intelligence results.
+- [x] Persist versioned analysis attempts, validated outputs, evidence links, response IDs, usage metadata, and safe failures transactionally.
+- [x] Make successful analysis reuse idempotent across transcript, model, prompt, schema, and segmenter identities while preserving refresh history.
+- [x] Treat transcripts as untrusted content, keep provider response storage disabled by default, and document analysis-data sensitivity and retention.
+- [x] Add the typed offline evaluation corpus and runner with separate retrieval,
+  agent-decision, tool-trace, final-response, structured-analysis, and operational results,
+  plus the deterministic persistence, failure, and cache coverage defined above.
+- [x] Complete the authorized live evaluation without audio retrieval or retranscription and show the validated persisted result.
+- [x] Pass all repository quality gates, lockfile consistency, and a package build.
 
-Status: approved and ready for implementation on 2026-08-20. The 2026-08-20 roadmap request approved promotion to **Current**; implementation and live evaluation are intentionally deferred to the next session.
+Status: complete on 2026-08-20.
+
+Implementation evidence:
+
+- Storage and retrieval: schema version 3 adds exact-offset transcript segments, a rebuildable episode-scoped FTS5 index, analysis attempts, validated canonical analyses, and normalized evidence links without changing transcript identity or ingestion behavior.
+- Tool-loop contract: strict metadata, search, and segment-read schemas; application validation; sequential bounded calls; `store=false`; complete stateless output-item replay; exact call-ID pairing; and opaque encrypted reasoning continuity without reasoning inspection or persistence.
+- Evidence contract: Pydantic Structured Outputs for question answers and episode intelligence; transcript ownership, segment existence, and exact quote matching must pass before return or atomic persistence. A conservative deterministic aligner may replace punctuation, capitalization, apostrophe, or whitespace drift only when the model's complete word sequence occurs exactly once in the cited segment; paraphrases, missing words, ambiguous matches, unknown segments, and cross-transcript evidence still fail closed.
+- Cache contract: structured analysis identity covers transcript content hash, analysis type, requested model, prompt version, schema version, and segmenter version; refresh and identity changes preserve prior successful history.
+- Evaluation contract: 20 typed synthetic cases across all seven planned categories; 14 retrieval-bearing cases achieved 100% hit rate, 100% recall at 5, 0.9524 mean reciprocal rank, and zero misses. Deterministic tool, trace, schema, evidence, isolation, failure, rollback, and cache gates passed.
+- Offline validation: 207 deterministic tests passed with 91.55% total coverage; Ruff formatting and linting, strict mypy, lockfile consistency, and source/wheel builds all passed.
+- Live analysis validation: after explicit authorization, the persisted 84,995-character transcript for Spotify episode `0VPwvReM2olZDWl3YOHfqh` was analyzed through `gpt-5.6-sol` with `store=false`, without audio retrieval or retranscription. The successful prompt-v2 run persisted one canonical analysis with response ID, 21,334 input tokens, 6,451 output tokens, 27,785 total tokens, and 70 evidence links; all 70 quotes matched their cited segments exactly and zero evidence links crossed transcript ownership.
+- Live failure and cache evidence: an initial sandboxed provider failure and two exact-quote failures were stored as safe failed attempts with no partial analysis or evidence. Those failures motivated the prompt-v2 and conservative source-alignment tests rather than a weaker validator. The successful analysis was then returned from the local cache without another analysis run, and the transcript count remained unchanged at two.
+- Live trace and response evaluation: the fixed-label release run passed agent-decision, tool-trace, final-response, structured-analysis, and operational graders. One preliminary graded Q&A response missed a required literal reference term before the passing release run; this single live workflow validates the milestone contract but is not evidence of broad production reliability.
 
 Out of scope:
 

@@ -18,6 +18,11 @@ from podcast_intelligence.episode_resolution import (
     ResolvedSpotifyEpisode,
     resolve_transcript_sources,
 )
+from podcast_intelligence.intelligence_models import (
+    AnalysisEvidence,
+    EpisodeAnalysis,
+    EvidenceBackedItem,
+)
 from podcast_intelligence.models import PodcastEpisode
 from podcast_intelligence.persistence import (
     CHUNKER_VERSION,
@@ -26,6 +31,7 @@ from podcast_intelligence.persistence import (
     PersistenceCorruptionError,
     PersistenceError,
     TranscriptStore,
+    analysis_identity,
     dollars_to_microusd,
     source_fingerprint,
     transcription_identity,
@@ -125,6 +131,19 @@ def _running_run(store: TranscriptStore) -> tuple[int, EpisodeRecord]:
     return run_id, episode
 
 
+def _analysis(segment_id: str, quote: str) -> EpisodeAnalysis:
+    evidence = [AnalysisEvidence(segment_id=segment_id, quote=quote)]
+    item = EvidenceBackedItem(text="Synthetic evidence-backed statement.", evidence=evidence)
+    return EpisodeAnalysis(
+        summary=item,
+        topics=[item],
+        people=[],
+        claims=[item],
+        actionable_insights=[item],
+        limitations=["Synthetic transcript without aligned speaker timing."],
+    )
+
+
 def test_fresh_database_applies_versioned_schema_and_enforces_constraints(
     tmp_path: Path,
 ) -> None:
@@ -146,13 +165,18 @@ def test_fresh_database_applies_versioned_schema_and_enforces_constraints(
                 "SELECT name FROM sqlite_master WHERE type = 'table'"
             ).fetchall()
         }
-    assert versions == [(1,), (2,)]
+    assert versions == [(1,), (2,), (3,)]
     assert {
         "feeds",
         "episodes",
         "transcription_runs",
         "transcript_parts",
         "transcripts",
+        "transcript_segments",
+        "transcript_segments_fts",
+        "analysis_runs",
+        "episode_analyses",
+        "analysis_evidence",
     } <= tables
 
 
@@ -172,10 +196,34 @@ def test_database_upgrades_from_first_migration(tmp_path: Path) -> None:
     TranscriptStore(path).close()
 
     with sqlite3.connect(path) as connection:
-        assert connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone() == (2,)
+        assert connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone() == (3,)
         assert connection.execute(
             "SELECT name FROM sqlite_master WHERE name = 'transcripts'"
         ).fetchone() == ("transcripts",)
+
+
+def test_database_upgrades_from_transcript_schema_to_intelligence_schema(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "upgrade-v3.db"
+    TranscriptStore(path, target_version=2).close()
+
+    with sqlite3.connect(path) as connection:
+        assert connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone() == (2,)
+        assert (
+            connection.execute(
+                "SELECT name FROM sqlite_master WHERE name = 'transcript_segments'"
+            ).fetchone()
+            is None
+        )
+
+    TranscriptStore(path).close()
+
+    with sqlite3.connect(path) as connection:
+        assert connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone() == (3,)
+        assert connection.execute(
+            "SELECT name FROM sqlite_master WHERE name = 'transcript_segments_fts'"
+        ).fetchone() == ("transcript_segments_fts",)
 
 
 def test_failed_migration_rolls_back_all_its_changes(
@@ -184,7 +232,7 @@ def test_failed_migration_rolls_back_all_its_changes(
     path = tmp_path / "rollback.db"
     TranscriptStore(path).close()
     failing = persistence_module._Migration(
-        version=3,
+        version=4,
         statements=("CREATE TABLE should_rollback (id INTEGER)", "INVALID SQL"),
     )
     monkeypatch.setattr(
@@ -193,7 +241,7 @@ def test_failed_migration_rolls_back_all_its_changes(
         (*persistence_module._MIGRATIONS, failing),
     )
 
-    with pytest.raises(PersistenceError, match="migration 3 failed"):
+    with pytest.raises(PersistenceError, match="migration 4 failed"):
         TranscriptStore(path)
 
     with sqlite3.connect(path) as connection:
@@ -203,7 +251,7 @@ def test_failed_migration_rolls_back_all_its_changes(
             ).fetchone()
             is None
         )
-        assert connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone() == (2,)
+        assert connection.execute("SELECT MAX(version) FROM schema_migrations").fetchone() == (3,)
 
 
 def test_episode_identity_is_feed_and_guid_not_title(tmp_path: Path) -> None:
@@ -244,6 +292,7 @@ def test_success_round_trip_preserves_parts_usage_hashes_and_cache_keys(
         )
 
     assert stored.text == "First synthetic part.\n\nSecond synthetic part."
+    assert stored.transcript_id > 0
     assert stored.content_hash == sha256(stored.text.encode()).hexdigest()
     assert stored.audio_bytes == len(b"synthetic audio")
     assert stored.estimated_cost_microusd == 135_000
@@ -257,6 +306,243 @@ def test_success_round_trip_preserves_parts_usage_hashes_and_cache_keys(
     )
     assert source_cached is not None and source_cached.run_id == run_id
     assert audio_cached is not None and audio_cached.run_id == run_id
+
+
+def test_segments_and_fts_are_deterministic_rebuildable_and_transcript_scoped(
+    tmp_path: Path,
+) -> None:
+    with TranscriptStore(tmp_path / "segments.db") as store:
+        run_id, episode = _running_run(store)
+        stored = store.persist_success(
+            run_id,
+            episode,
+            _episode_transcript(),
+            chunker_version=CHUNKER_VERSION,
+            prompt_version=TRANSCRIPTION_PROMPT_VERSION,
+        )
+        first = store.ensure_segments(
+            stored,
+            segmenter_version="test-segmenter-v1",
+            max_chars=64,
+        )
+        second = store.ensure_segments(
+            stored,
+            segmenter_version="test-segmenter-v1",
+            max_chars=64,
+        )
+        search = store.search_segments(
+            stored.transcript_id,
+            query="Second synthetic",
+            limit=5,
+            segmenter_version="test-segmenter-v1",
+        )
+        read = store.read_segments(
+            stored.transcript_id,
+            tuple(hit.segment.segment_id for hit in search),
+        )
+
+    assert first == second
+    assert search
+    assert "Second synthetic" in search[0].segment.text
+    assert read == tuple(hit.segment for hit in search)
+    assert all(segment.transcript_id == stored.transcript_id for segment in first)
+
+
+def test_segment_corruption_and_unknown_segment_are_rejected(tmp_path: Path) -> None:
+    path = tmp_path / "segment-corruption.db"
+    with TranscriptStore(path) as store:
+        run_id, episode = _running_run(store)
+        stored = store.persist_success(
+            run_id,
+            episode,
+            _episode_transcript(),
+            chunker_version=CHUNKER_VERSION,
+            prompt_version=TRANSCRIPTION_PROMPT_VERSION,
+        )
+        segments = store.ensure_segments(
+            stored,
+            segmenter_version="test-segmenter-v1",
+            max_chars=64,
+        )
+        with pytest.raises(PersistenceError, match="not found"):
+            store.read_segments(stored.transcript_id, ("f" * 64,))
+        with sqlite3.connect(path) as connection:
+            connection.execute(
+                "UPDATE transcript_segments SET text = 'tampered' WHERE segment_id = ?",
+                (segments[0].segment_id,),
+            )
+        with pytest.raises(PersistenceCorruptionError, match="segment hash"):
+            store.load_segments(
+                stored.transcript_id,
+                segmenter_version="test-segmenter-v1",
+            )
+
+
+def test_analysis_success_round_trip_evidence_links_and_cache_identity(tmp_path: Path) -> None:
+    with TranscriptStore(tmp_path / "analysis.db") as store:
+        transcript_run_id, episode = _running_run(store)
+        transcript = store.persist_success(
+            transcript_run_id,
+            episode,
+            _episode_transcript(),
+            chunker_version=CHUNKER_VERSION,
+            prompt_version=TRANSCRIPTION_PROMPT_VERSION,
+        )
+        segments = store.ensure_segments(
+            transcript,
+            segmenter_version="test-segmenter-v1",
+            max_chars=64,
+        )
+        analysis = _analysis(segments[0].segment_id, "First synthetic part")
+        run_id = store.create_analysis_run(
+            transcript,
+            analysis_type="episode_intelligence",
+            model="gpt-5.6-sol",
+            prompt_version="analysis-prompt-v1",
+            schema_version="1",
+            segmenter_version="test-segmenter-v1",
+        )
+        store.mark_analysis_running(run_id)
+        stored = store.persist_analysis_success(
+            run_id,
+            response_id="resp_analysis",
+            input_tokens=100,
+            output_tokens=50,
+            total_tokens=150,
+            analysis=analysis,
+        )
+        cached = store.find_analysis_cache(
+            transcript,
+            analysis_type="episode_intelligence",
+            model="gpt-5.6-sol",
+            prompt_version="analysis-prompt-v1",
+            schema_version="1",
+            segmenter_version="test-segmenter-v1",
+        )
+
+    assert stored.analysis == analysis
+    assert stored.response_id == "resp_analysis"
+    assert stored.total_tokens == 150
+    assert cached is not None and cached.run_id == run_id
+    assert stored.cache_identity == analysis_identity(
+        transcript_content_hash=transcript.content_hash,
+        analysis_type="episode_intelligence",
+        model="gpt-5.6-sol",
+        prompt_version="analysis-prompt-v1",
+        schema_version="1",
+        segmenter_version="test-segmenter-v1",
+    )
+
+
+def test_analysis_identity_changes_for_every_versioned_input() -> None:
+    base = {
+        "transcript_content_hash": "a" * 64,
+        "analysis_type": "episode_intelligence",
+        "model": "gpt-5.6-sol",
+        "prompt_version": "prompt-v1",
+        "schema_version": "1",
+        "segmenter_version": "segmenter-v1",
+    }
+    identities = {analysis_identity(**base)}
+    for field, value in (
+        ("transcript_content_hash", "b" * 64),
+        ("analysis_type", "other"),
+        ("model", "other-model"),
+        ("prompt_version", "prompt-v2"),
+        ("schema_version", "2"),
+        ("segmenter_version", "segmenter-v2"),
+    ):
+        changed = {**base, field: value}
+        identities.add(analysis_identity(**changed))
+    assert len(identities) == 7
+
+
+def test_analysis_atomic_failure_has_no_partial_output_or_evidence(tmp_path: Path) -> None:
+    path = tmp_path / "analysis-atomic.db"
+    with TranscriptStore(path) as store:
+        transcript_run_id, episode = _running_run(store)
+        transcript = store.persist_success(
+            transcript_run_id,
+            episode,
+            _episode_transcript(),
+            chunker_version=CHUNKER_VERSION,
+            prompt_version=TRANSCRIPTION_PROMPT_VERSION,
+        )
+        segments = store.ensure_segments(
+            transcript,
+            segmenter_version="test-segmenter-v1",
+            max_chars=64,
+        )
+        run_id = store.create_analysis_run(
+            transcript,
+            analysis_type="episode_intelligence",
+            model="gpt-5.6-sol",
+            prompt_version="analysis-prompt-v1",
+            schema_version="1",
+            segmenter_version="test-segmenter-v1",
+        )
+        store.mark_analysis_running(run_id)
+        with sqlite3.connect(path) as connection:
+            connection.execute(
+                """
+                CREATE TRIGGER reject_analysis_evidence BEFORE INSERT ON analysis_evidence
+                BEGIN SELECT RAISE(ABORT, 'rejected'); END
+                """
+            )
+        with pytest.raises(PersistenceError, match="atomic analysis"):
+            store.persist_analysis_success(
+                run_id,
+                response_id="resp_analysis",
+                input_tokens=1,
+                output_tokens=1,
+                total_tokens=2,
+                analysis=_analysis(segments[0].segment_id, "First synthetic part"),
+            )
+        assert store.analysis_run_status(run_id) == "running"
+
+    with sqlite3.connect(path) as connection:
+        assert connection.execute("SELECT COUNT(*) FROM episode_analyses").fetchone() == (0,)
+        assert connection.execute("SELECT COUNT(*) FROM analysis_evidence").fetchone() == (0,)
+
+
+def test_failed_analysis_records_safe_state_without_partial_rows(tmp_path: Path) -> None:
+    path = tmp_path / "analysis-failed.db"
+    with TranscriptStore(path) as store:
+        transcript_run_id, episode = _running_run(store)
+        transcript = store.persist_success(
+            transcript_run_id,
+            episode,
+            _episode_transcript(),
+            chunker_version=CHUNKER_VERSION,
+            prompt_version=TRANSCRIPTION_PROMPT_VERSION,
+        )
+        run_id = store.create_analysis_run(
+            transcript,
+            analysis_type="episode_intelligence",
+            model="gpt-5.6-sol",
+            prompt_version="analysis-prompt-v1",
+            schema_version="1",
+            segmenter_version="test-segmenter-v1",
+        )
+        store.mark_analysis_running(run_id)
+        store.mark_analysis_failed(
+            run_id,
+            error_code="ResponsesClientError",
+            safe_message="episode analysis failed evidence validation",
+        )
+        assert store.analysis_run_status(run_id) == "failed"
+        with pytest.raises(PersistenceError, match="not found"):
+            store.get_analysis(run_id)
+
+    with sqlite3.connect(path) as connection:
+        row = connection.execute(
+            "SELECT error_code, error_message FROM analysis_runs WHERE id = ?",
+            (run_id,),
+        ).fetchone()
+        assert row == (
+            "ResponsesClientError",
+            "episode analysis failed evidence validation",
+        )
 
 
 def test_success_persistence_rolls_back_partial_parts_on_failure(tmp_path: Path) -> None:

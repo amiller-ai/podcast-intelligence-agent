@@ -4,7 +4,7 @@ A personal application for turning podcast content into searchable, useful intel
 
 ## Project status
 
-Milestone 6 adds a resumable local pipeline around the authorized RSS audio fallback. Verified feed and episode identities, run state, ordered provider parts, canonical transcripts, hashes, and provenance are stored in SQLite. An unchanged successful episode is returned from the database before audio retrieval or provider invocation; explicit refreshes preserve prior successful history. See the [`docs/ROADMAP.md`](docs/ROADMAP.md) source of truth for completion evidence and proposed work.
+Milestone 7 adds deterministic transcript segmentation, rebuildable SQLite FTS5 retrieval, bounded read-only model tools, evidence-grounded question answering, and versioned Structured Output analysis over the persisted transcripts from Milestone 6. The offline suite and one explicitly authorized live evaluation are validated. See the [`docs/ROADMAP.md`](docs/ROADMAP.md) source of truth for completion evidence and proposed work.
 
 ## Development setup
 
@@ -67,12 +67,33 @@ Transcript text and provider provenance are sensitive user-derived data. The ent
 
 SQLite is the canonical local source of truth. Future search or vector indexes should be treated as rebuildable derivatives rather than independent transcript stores.
 
+## Local podcast intelligence
+
+Milestone 7 derives exact-offset transcript segments and an FTS5 index from each canonical transcript. The index is tied to the transcript content hash and segmenter version, is episode-scoped, and can be rebuilt without changing the canonical transcript. Models never receive a database handle or arbitrary SQL capability; they can only request bounded metadata, lexical search results, and exact selected-transcript segments through strict read-only schemas.
+
+Structured analyses are persisted only after their schema, transcript ownership, segment IDs, and exact quoted evidence pass deterministic validation. Analysis cache identity includes the transcript hash, requested model, prompt version, schema version, and segmenter version. Explicit refreshes preserve prior successful analysis history.
+
+The committed 20-case synthetic evaluation corpus keeps retrieval, tool decisions, call lineage, final-answer evidence, structured analysis, and operational diagnostics separately observable. It runs within the default offline suite and does not send transcript content to a provider.
+
+### Live-analysis privacy boundary
+
+A live Milestone 7 evaluation sends the full selected canonical transcript, episode metadata, and subsequent retrieved excerpts to the OpenAI Responses API. `OPENAI_STORE_RESPONSES=false` disables response persistence through the API request, but it does not avoid transmitting that content to OpenAI for processing. The run does not resolve an episode, download audio, or invoke transcription.
+
+Run it only after explicitly approving that transmission:
+
+```bash
+RUN_LIVE_PODCAST_INTELLIGENCE=1 uv run pytest \
+  -o "addopts=--strict-config --strict-markers" \
+  -m integration tests/integration/test_podcast_intelligence.py
+```
+
 ## Working conventions
 
 - Build one observable milestone at a time and define its acceptance check first.
 - Keep OpenAI model selection configurable through `OPENAI_MODEL`.
 - Keep speech-to-text model and price configuration separate through `OPENAI_TRANSCRIPTION_MODEL` and `OPENAI_TRANSCRIPTION_COST_PER_MINUTE_USD`.
 - Keep the SQLite location configurable through `DATABASE_PATH`; its safe ignored default is `data/podcast_intelligence.db`.
+- Keep segmentation, retrieval, tool-loop, output, and context limits centrally configurable through the `INTELLIGENCE_*` settings.
 - Keep reasoning effort configurable through `OPENAI_REASONING_EFFORT`; the initial baseline is `medium`.
 - Disable API response storage by default through `OPENAI_STORE_RESPONSES=false`.
 - Put future OpenAI SDK calls behind one application-owned client boundary.
