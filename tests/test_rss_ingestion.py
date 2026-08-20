@@ -19,7 +19,7 @@ def test_parse_rss_feed_normalizes_podcast_and_episode_metadata() -> None:
               <description><![CDATA[The <strong>first</strong> episode.]]></description>
               <link>https://example.com/episodes/1</link>
               <pubDate>Tue, 19 Aug 2025 10:30:00 -0700</pubDate>
-              <enclosure url="https://cdn.example.com/1.mp3" type="audio/mpeg" />
+              <enclosure url="https://cdn.example.com/1.mp3" type="audio/mpeg" length="12345" />
               <itunes:duration>01:02:03</itunes:duration>
             </item>
             <item>
@@ -44,11 +44,24 @@ def test_parse_rss_feed_normalizes_podcast_and_episode_metadata() -> None:
     assert first.published_at == datetime(2025, 8, 19, 17, 30, tzinfo=UTC)
     assert first.audio_url == "https://cdn.example.com/1.mp3"
     assert first.audio_media_type == "audio/mpeg"
+    assert first.audio_size_bytes == 12_345
     assert first.duration_seconds == 3723
 
     assert second.episode_id == "https://cdn.example.com/2.mp3"
     assert second.published_at is None
     assert second.duration_seconds == 95
+    assert second.audio_size_bytes is None
+
+
+@pytest.mark.parametrize(("length", "expected"), [("0", 0), ("-1", None), ("unknown", None)])
+def test_parse_rss_feed_handles_enclosure_length(length: str, expected: int | None) -> None:
+    feed = parse_rss_feed(
+        f"""<rss><channel><title>Feed</title><item><title>Episode</title>
+        <enclosure url="https://example.test/audio.mp3" type="audio/mpeg" length="{length}" />
+        </item></channel></rss>"""
+    )
+
+    assert feed.episodes[0].audio_size_bytes == expected
 
 
 @pytest.mark.parametrize(

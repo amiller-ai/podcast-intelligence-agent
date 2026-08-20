@@ -1,4 +1,5 @@
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
@@ -16,6 +17,7 @@ def test_settings_have_safe_explicit_defaults() -> None:
     assert settings.openai_transcription_model == "gpt-transcribe"
     assert settings.openai_transcription_cost_per_minute_usd == Decimal("0.0045")
     assert settings.openai_transcription_timeout_seconds == 600.0
+    assert settings.database_path == Path("data/podcast_intelligence.db")
 
 
 @pytest.mark.parametrize(
@@ -46,3 +48,11 @@ def test_secret_is_redacted_from_settings_representation() -> None:
     settings = Settings.model_validate({"openai_api_key": "do-not-display"})
 
     assert "do-not-display" not in repr(settings)
+
+
+def test_settings_accept_database_path_override(tmp_path: Path) -> None:
+    path = tmp_path / "alternate.db"
+
+    settings = Settings.model_validate({"openai_api_key": "test-key", "database_path": path})
+
+    assert settings.database_path == path

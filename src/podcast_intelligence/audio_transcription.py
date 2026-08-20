@@ -3,6 +3,7 @@
 from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal
+from hashlib import sha256
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Protocol
@@ -77,6 +78,50 @@ class AudioTranscriptionProviderError(AudioTranscriptionError):
 
 
 @dataclass(frozen=True, slots=True)
+class TranscriptionUsage:
+    """Normalized provider usage for one transcription request."""
+
+    usage_type: str
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+    total_tokens: int | None = None
+    audio_seconds: float | None = None
+    input_token_details_json: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.usage_type.strip():
+            raise ValueError("transcription usage type must not be empty")
+        numeric_values = (
+            self.input_tokens,
+            self.output_tokens,
+            self.total_tokens,
+            self.audio_seconds,
+        )
+        if any(value is not None and value < 0 for value in numeric_values):
+            raise ValueError("transcription usage values must not be negative")
+
+
+@dataclass(frozen=True, slots=True)
+class ProviderTranscriptPart:
+    """One ordered provider response used to assemble a transcript."""
+
+    ordinal: int
+    text: str
+    request_id: str | None
+    model: str
+    language: str | None = None
+    usage: TranscriptionUsage | None = None
+
+    def __post_init__(self) -> None:
+        if self.ordinal < 0:
+            raise ValueError("transcript part ordinal must not be negative")
+        if not self.text.strip():
+            raise ValueError("transcript part text must not be empty")
+        if not self.model.strip():
+            raise ValueError("transcript part model must not be empty")
+
+
+@dataclass(frozen=True, slots=True)
 class AudioTranscriptionPolicy:
     """Explicit duration, network, byte, and estimated-cost limits."""
 
@@ -110,6 +155,7 @@ class ProviderTranscript:
     request_ids: tuple[str, ...] = ()
     language: str | None = None
     chunk_count: int = 1
+    parts: tuple[ProviderTranscriptPart, ...] = ()
 
     def __post_init__(self) -> None:
         if not self.text.strip():
@@ -120,6 +166,19 @@ class ProviderTranscript:
             raise ValueError("transcript model must not be empty")
         if self.chunk_count <= 0:
             raise ValueError("transcript chunk count must be positive")
+        if self.parts:
+            if tuple(part.ordinal for part in self.parts) != tuple(range(len(self.parts))):
+                raise ValueError("transcript part ordinals must be contiguous and ordered")
+            if self.chunk_count != len(self.parts):
+                raise ValueError("transcript chunk count must equal the number of parts")
+            assembled = "\n\n".join(part.text.strip() for part in self.parts)
+            if self.text != assembled:
+                raise ValueError("transcript text must equal the deterministic part assembly")
+            part_request_ids = tuple(
+                part.request_id for part in self.parts if part.request_id is not None
+            )
+            if self.request_ids != part_request_ids:
+                raise ValueError("transcript request IDs must match ordered part provenance")
 
     @property
     def response_id(self) -> str | None:
@@ -151,6 +210,9 @@ class EpisodeTranscript:
     source_media_type: str
     duration_seconds: int
     audio_bytes: int
+    audio_sha256: str
+    etag: str | None
+    last_modified: str | None
     estimated_cost_usd: Decimal
     transcript: ProviderTranscript
 
@@ -198,7 +260,7 @@ def transcribe_episode_audio(
 
     with TemporaryDirectory(prefix="podcast-intelligence-audio-") as temporary_directory:
         audio_path = Path(temporary_directory) / f"episode{_MEDIA_TYPE_FORMATS[media_type]}"
-        audio_bytes, response_media_type = _retrieve_audio(
+        audio_result = _retrieve_audio(
             episode.audio_url,
             audio_path,
             rss_media_type=media_type,
@@ -209,7 +271,7 @@ def transcribe_episode_audio(
         try:
             transcript = transcriber.transcribe(
                 audio_path,
-                media_type=response_media_type,
+                media_type=audio_result.media_type,
                 duration_seconds=episode.duration_seconds,
             )
         except AudioTranscriptionError:
@@ -220,9 +282,12 @@ def transcribe_episode_audio(
     return EpisodeTranscript(
         episode_id=episode.episode_id,
         source_url=episode.audio_url,
-        source_media_type=response_media_type,
+        source_media_type=audio_result.media_type,
         duration_seconds=episode.duration_seconds,
-        audio_bytes=audio_bytes,
+        audio_bytes=audio_result.byte_count,
+        audio_sha256=audio_result.sha256,
+        etag=audio_result.etag,
+        last_modified=audio_result.last_modified,
         estimated_cost_usd=estimated_cost,
         transcript=transcript,
     )
@@ -253,7 +318,7 @@ def _retrieve_audio(
     policy: AudioTranscriptionPolicy,
     transport: httpx2.BaseTransport | None,
     resolver: HostResolver,
-) -> tuple[int, str]:
+) -> "_RetrievedAudio":
     timeout = httpx2.Timeout(
         connect=policy.connect_timeout_seconds,
         read=policy.read_timeout_seconds,
@@ -288,7 +353,7 @@ def _stream_audio(
     rss_media_type: str,
     policy: AudioTranscriptionPolicy,
     resolver: HostResolver,
-) -> tuple[int, str]:
+) -> "_RetrievedAudio":
     current_url = url
     redirects_followed = 0
 
@@ -326,14 +391,20 @@ def _stream_audio(
                 response.headers.get("content-length"),
                 maximum=policy.max_audio_bytes,
             )
-            audio_bytes = _write_bounded(
+            audio_bytes, audio_sha256 = _write_bounded(
                 response,
                 destination,
                 maximum=policy.max_audio_bytes,
             )
             if audio_bytes == 0:
                 raise AudioTranscriptionPolicyError("audio response must not be empty")
-            return audio_bytes, response_media_type
+            return _RetrievedAudio(
+                byte_count=audio_bytes,
+                media_type=response_media_type,
+                sha256=audio_sha256,
+                etag=_optional_header(response.headers.get("etag")),
+                last_modified=_optional_header(response.headers.get("last-modified")),
+            )
 
 
 def _validate_audio_destination(url: str, *, resolver: HostResolver) -> None:
@@ -390,8 +461,20 @@ def _validate_content_length(header: str | None, *, maximum: int) -> None:
         )
 
 
-def _write_bounded(response: httpx2.Response, destination: Path, *, maximum: int) -> int:
+@dataclass(frozen=True, slots=True)
+class _RetrievedAudio:
+    byte_count: int
+    media_type: str
+    sha256: str
+    etag: str | None
+    last_modified: str | None
+
+
+def _write_bounded(
+    response: httpx2.Response, destination: Path, *, maximum: int
+) -> tuple[int, str]:
     audio_bytes = 0
+    digest = sha256()
     with destination.open("xb") as audio_file:
         for chunk in response.iter_bytes():
             if audio_bytes + len(chunk) > maximum:
@@ -399,5 +482,13 @@ def _write_bounded(response: httpx2.Response, destination: Path, *, maximum: int
                     f"audio response exceeds the {maximum}-byte size limit"
                 )
             audio_file.write(chunk)
+            digest.update(chunk)
             audio_bytes += len(chunk)
-    return audio_bytes
+    return audio_bytes, digest.hexdigest()
+
+
+def _optional_header(value: str | None) -> str | None:
+    if value is None:
+        return None
+    stripped = value.strip()
+    return stripped or None

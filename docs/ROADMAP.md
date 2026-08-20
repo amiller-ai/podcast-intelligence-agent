@@ -198,20 +198,34 @@ Minimum relational model:
 
 Acceptance criteria:
 
-- [ ] Add centrally configured SQLite settings with a safe ignored default path and no implicit creation outside the configured runtime directory.
-- [ ] Add an application-owned persistence boundary using `sqlite3`, foreign-key enforcement, explicit transactions, and deterministic versioned migrations.
-- [ ] Create the minimum relational model above with uniqueness, foreign-key, status, and non-negative resource constraints enforced in SQLite.
-- [ ] Persist verified feed and episode identity without using title as a primary or cache key.
-- [ ] Extend the transcription result contract to preserve ordered provider parts and persist their request IDs, text, language, usage metadata, and model provenance.
-- [ ] Compute and persist source fingerprints, audio SHA-256, transcript content hashes, model identity, chunker version, prompt version, estimated cost, and byte count.
-- [ ] Return a matching successful cached transcript before audio retrieval or provider invocation, with deterministic tests proving those boundaries were not called.
-- [ ] Make repeated ingestion idempotent and preserve prior successful history when an explicit refresh produces a new source or transcription identity.
-- [ ] Persist success atomically; record safe failed-run state without partial transcript rows or raw content in logs/errors.
-- [ ] Keep audio and ffmpeg chunks temporary, keep the database and other runtime data ignored by Git, and document local transcript sensitivity and backup expectations.
-- [ ] Keep the default test suite deterministic and network-free, including fresh migration, upgrade, rollback-on-failure, cache-hit, cache-miss, refresh, and corruption/error cases.
-- [ ] Pass all repository quality gates, lockfile consistency, and a package build.
+- [x] Add centrally configured SQLite settings with a safe ignored default path and no implicit creation outside the configured runtime directory.
+- [x] Add an application-owned persistence boundary using `sqlite3`, foreign-key enforcement, explicit transactions, and deterministic versioned migrations.
+- [x] Create the minimum relational model above with uniqueness, foreign-key, status, and non-negative resource constraints enforced in SQLite.
+- [x] Persist verified feed and episode identity without using title as a primary or cache key.
+- [x] Extend the transcription result contract to preserve ordered provider parts and persist their request IDs, text, language, usage metadata, and model provenance.
+- [x] Compute and persist source fingerprints, audio SHA-256, transcript content hashes, model identity, chunker version, prompt version, estimated cost, and byte count.
+- [x] Return a matching successful cached transcript before audio retrieval or provider invocation, with deterministic tests proving those boundaries were not called.
+- [x] Make repeated ingestion idempotent and preserve prior successful history when an explicit refresh produces a new source or transcription identity.
+- [x] Persist success atomically; record safe failed-run state without partial transcript rows or raw content in logs/errors.
+- [x] Keep audio and ffmpeg chunks temporary, keep the database and other runtime data ignored by Git, and document local transcript sensitivity and backup expectations.
+- [x] Keep the default test suite deterministic and network-free, including fresh migration, upgrade, rollback-on-failure, cache-hit, cache-miss, refresh, and corruption/error cases.
+- [x] Pass all repository quality gates, lockfile consistency, and a package build.
 
-Status: approved and ready for implementation on 2026-08-19.
+Status: complete on 2026-08-19. It remains under **Current** until the user approves promotion of a proposed milestone.
+
+Completion evidence:
+
+- Storage contract: schema versions 1 and 2 create the five-table relational model with foreign keys, explicit transactions, database constraints, private `0600` file creation, and the ignored default `data/podcast_intelligence.db`
+- Identity contract: feed URL plus RSS GUID identifies an episode; normalized source and definitive transcription hashes cover enclosure metadata, audio SHA-256, model, chunker version, and prompt version without using title as a key
+- Provenance contract: every OpenAI chunk persists its ordinal, request ID, model, language, normalized token/duration usage, and text; the canonical transcript is deterministic ordered assembly with a verified SHA-256 hash
+- Pipeline contract: an unchanged source returns the successful SQLite transcript before media retrieval; explicit refresh re-downloads while definitive audio identity can skip the provider, and new identities preserve successful history
+- Failure contract: pending/running/succeeded/failed state is durable; transcript parts, canonical text, and success state commit atomically; application failures store safe codes/messages without partial content
+- Retention contract: SQLite stores transcript content but never audio or ffmpeg chunks; local sensitivity, backup, retention, and derivative-index expectations are documented, and all runtime data remains ignored by Git
+- Offline validation: 162 deterministic tests passed with 93.86% total coverage; Ruff formatting and linting, strict mypy, lockfile consistency, and package build all passed
+- Live validation: both user-supplied Spotify episodes resolved, downloaded only their verified RSS enclosures, transcribed through OpenAI, persisted with full ordered provenance, passed database hash/assembly readback, and returned as source-cache hits on an immediate second ingestion
+- Live episode `0VPwvReM2olZDWl3YOHfqh`: 4,576 seconds, 74,504,048 audio bytes, $0.3432 estimate, 6 provider parts/request IDs, 84,995 transcript characters, content SHA-256 `9f909754e531c42667e042d4e2bb58c340890c1e5a453a59bfdf6287d7b69ec3`
+- Live episode `7HH9LCznGvLZHYYuXaVOd9`: 5,970 seconds, 143,266,039 audio bytes, $0.4478 estimate, 8 provider parts/request IDs, 95,929 transcript characters, content SHA-256 `fbf32d42d38b39dd584ae10470318cb697a1204a38eee89be2c8da7ab96daf59`
+- Resource-bound evidence: the second supplied enclosure correctly failed the inherited 100,000,000-byte default on the first attempt with no partial transcript; the explicitly authorized live test then used a caller-scoped 150,000,000-byte cap while leaving the production default and all other duration, cost, network, media, temporary-file, and upload controls unchanged
 
 Out of scope:
 

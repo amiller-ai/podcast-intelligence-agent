@@ -1,6 +1,7 @@
 import socket
 from collections.abc import Callable
 from decimal import Decimal
+from hashlib import sha256
 from pathlib import Path
 from stat import S_IMODE
 
@@ -105,7 +106,11 @@ def test_transcribe_episode_audio_returns_typed_provenance_and_deletes_audio() -
         requests.append(request)
         return httpx2.Response(
             200,
-            headers={"Content-Type": "audio/mpeg"},
+            headers={
+                "Content-Type": "audio/mpeg",
+                "ETag": '"synthetic-etag"',
+                "Last-Modified": "Wed, 19 Aug 2026 12:00:00 GMT",
+            },
             content=_AUDIO_BYTES,
         )
 
@@ -124,6 +129,9 @@ def test_transcribe_episode_audio_returns_typed_provenance_and_deletes_audio() -
     assert result.source_media_type == "audio/mpeg"
     assert result.duration_seconds == 1_800
     assert result.audio_bytes == len(_AUDIO_BYTES)
+    assert result.audio_sha256 == sha256(_AUDIO_BYTES).hexdigest()
+    assert result.etag == '"synthetic-etag"'
+    assert result.last_modified == "Wed, 19 Aug 2026 12:00:00 GMT"
     assert result.estimated_cost_usd == Decimal("0.25")
     assert result.transcript.text == "A small synthetic transcript."
     assert result.transcript.response_id == "transcription-1"

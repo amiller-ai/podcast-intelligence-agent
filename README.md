@@ -4,7 +4,7 @@ A personal application for turning podcast content into searchable, useful intel
 
 ## Project status
 
-Milestone 5 is complete with an explicitly authorized, resource-bounded RSS audio fallback and a live-tested OpenAI transcription adapter. Large enclosures are split into sub-25 MB temporary chunks, transcribed sequentially with `gpt-transcribe`, merged only in memory, and deleted locally after use. It never accepts Spotify audio and remains the current milestone until structured podcast intelligence is explicitly approved. See the [`docs/ROADMAP.md`](docs/ROADMAP.md) source of truth for completion evidence and proposed work.
+Milestone 6 adds a resumable local pipeline around the authorized RSS audio fallback. Verified feed and episode identities, run state, ordered provider parts, canonical transcripts, hashes, and provenance are stored in SQLite. An unchanged successful episode is returned from the database before audio retrieval or provider invocation; explicit refreshes preserve prior successful history. See the [`docs/ROADMAP.md`](docs/ROADMAP.md) source of truth for completion evidence and proposed work.
 
 ## Development setup
 
@@ -59,11 +59,20 @@ tests/integration/         Explicit live-service smoke tests
 
 Runtime data, downloaded media, transcripts, local databases, and secrets are not committed.
 
+## Local transcript storage
+
+The default SQLite database is `data/podcast_intelligence.db`. Override it with `DATABASE_PATH` for tests or another explicitly selected local runtime directory. The configured parent directory is created when the store is initialized; no database service or ORM is required.
+
+Transcript text and provider provenance are sensitive user-derived data. The entire `data/` directory is ignored by Git. Protect any backup of the database like the original transcripts, restrict access to the current user, and define your own retention/deletion policy. Audio enclosures and ffmpeg chunks remain temporary and are deleted after success or failure; they are never stored in SQLite.
+
+SQLite is the canonical local source of truth. Future search or vector indexes should be treated as rebuildable derivatives rather than independent transcript stores.
+
 ## Working conventions
 
 - Build one observable milestone at a time and define its acceptance check first.
 - Keep OpenAI model selection configurable through `OPENAI_MODEL`.
 - Keep speech-to-text model and price configuration separate through `OPENAI_TRANSCRIPTION_MODEL` and `OPENAI_TRANSCRIPTION_COST_PER_MINUTE_USD`.
+- Keep the SQLite location configurable through `DATABASE_PATH`; its safe ignored default is `data/podcast_intelligence.db`.
 - Keep reasoning effort configurable through `OPENAI_REASONING_EFFORT`; the initial baseline is `medium`.
 - Disable API response storage by default through `OPENAI_STORE_RESPONSES=false`.
 - Put future OpenAI SDK calls behind one application-owned client boundary.
@@ -97,4 +106,4 @@ RUN_LIVE_PODCAST_TRANSCRIPTION=1 uv run pytest \
   -m integration tests/integration/test_podcast_transcription.py
 ```
 
-The live test does not print or persist transcript content. It incurs OpenAI transcription charges according to the configured model and current account pricing.
+The live test persists transcript content and provenance to the configured SQLite database, then verifies a repeated ingestion is a cache hit. It never persists audio. It incurs OpenAI transcription charges for episodes that do not already have a matching successful cached transcript.

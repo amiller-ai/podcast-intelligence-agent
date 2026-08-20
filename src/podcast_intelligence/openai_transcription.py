@@ -1,5 +1,6 @@
 """OpenAI file-transcription adapter with bounded temporary chunking."""
 
+import json
 import subprocess
 from dataclasses import dataclass
 from decimal import ROUND_CEILING, Decimal
@@ -9,11 +10,13 @@ from typing import Protocol
 
 import imageio_ffmpeg  # type: ignore[import-untyped]
 from openai import OpenAI, OpenAIError
-from openai.types.audio.transcription import Transcription
+from openai.types.audio.transcription import Transcription, UsageDuration, UsageTokens
 
 from podcast_intelligence.audio_transcription import (
     AudioTranscriptionProviderError,
     ProviderTranscript,
+    ProviderTranscriptPart,
+    TranscriptionUsage,
 )
 from podcast_intelligence.settings import Settings
 
@@ -148,16 +151,40 @@ class OpenAIAudioTranscriber:
             texts: list[str] = []
             request_ids: list[str] = []
             languages: set[str] = set()
-            for chunk in chunks:
+            parts: list[ProviderTranscriptPart] = []
+            for ordinal, chunk in enumerate(chunks):
                 response = self._transcribe_chunk(
                     chunk, context="\n\n".join(texts)[-_CONTEXT_CHARACTERS:]
                 )
-                texts.append(response.text.strip())
+                text = response.text.strip()
+                if not text:
+                    raise AudioTranscriptionProviderError(
+                        "OpenAI transcription returned an empty chunk"
+                    )
+                texts.append(text)
                 request_id = getattr(response, "_request_id", None)
                 if isinstance(request_id, str) and request_id:
                     request_ids.append(request_id)
-                if response.languages is not None:
-                    languages.update(language.code for language in response.languages)
+                response_languages = (
+                    {language.code for language in response.languages}
+                    if response.languages is not None
+                    else set()
+                )
+                languages.update(response_languages)
+                parts.append(
+                    ProviderTranscriptPart(
+                        ordinal=ordinal,
+                        text=text,
+                        request_id=request_id
+                        if isinstance(request_id, str) and request_id
+                        else None,
+                        model=self._model,
+                        language=(
+                            next(iter(response_languages)) if len(response_languages) == 1 else None
+                        ),
+                        usage=_normalize_usage(response),
+                    )
+                )
 
         merged_text = "\n\n".join(text for text in texts if text)
         if not merged_text:
@@ -169,6 +196,7 @@ class OpenAIAudioTranscriber:
             request_ids=tuple(request_ids),
             language=next(iter(languages)) if len(languages) == 1 else None,
             chunk_count=len(chunks),
+            parts=tuple(parts),
         )
 
     def _transcribe_chunk(self, chunk: Path, *, context: str) -> Transcription:
@@ -194,6 +222,26 @@ class OpenAIAudioTranscriber:
                 "OpenAI transcription returned an unexpected response type"
             )
         return response
+
+
+def _normalize_usage(response: Transcription) -> TranscriptionUsage | None:
+    usage = response.usage
+    if isinstance(usage, UsageTokens):
+        details = usage.input_token_details
+        return TranscriptionUsage(
+            usage_type="tokens",
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
+            total_tokens=usage.total_tokens,
+            input_token_details_json=(
+                json.dumps(details.model_dump(mode="json"), sort_keys=True, separators=(",", ":"))
+                if details is not None
+                else None
+            ),
+        )
+    if isinstance(usage, UsageDuration):
+        return TranscriptionUsage(usage_type="duration", audio_seconds=usage.seconds)
+    return None
 
 
 def estimate_openai_transcription_cost(

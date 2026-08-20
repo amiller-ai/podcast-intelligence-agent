@@ -2,6 +2,7 @@
 
 from decimal import Decimal
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import SecretStr, field_validator
@@ -26,6 +27,7 @@ class Settings(BaseSettings):
     openai_transcription_model: str = "gpt-transcribe"
     openai_transcription_cost_per_minute_usd: Decimal = Decimal("0.0045")
     openai_transcription_timeout_seconds: float = 600.0
+    database_path: Path = Path("data/podcast_intelligence.db")
 
     @field_validator("openai_api_key")
     @classmethod
@@ -60,6 +62,13 @@ class Settings(BaseSettings):
     def transcription_timeout_must_be_positive(cls, value: float) -> float:
         if value <= 0:
             raise ValueError("OPENAI_TRANSCRIPTION_TIMEOUT_SECONDS must be positive")
+        return value
+
+    @field_validator("database_path")
+    @classmethod
+    def database_path_must_name_a_file(cls, value: Path) -> Path:
+        if not value.name or value.name in {".", ".."}:
+            raise ValueError("DATABASE_PATH must name a database file")
         return value
 
 

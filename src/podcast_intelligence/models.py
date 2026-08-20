@@ -25,6 +25,7 @@ class PodcastEpisode:
     web_url: str | None = None
     audio_url: str | None = None
     audio_media_type: str | None = None
+    audio_size_bytes: int | None = None
     duration_seconds: int | None = None
     transcript_references: tuple[TranscriptReference, ...] = ()
 

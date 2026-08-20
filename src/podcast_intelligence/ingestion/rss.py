@@ -74,6 +74,7 @@ def _parse_episode(item: Element, *, index: int) -> PodcastEpisode:
         web_url=web_url,
         audio_url=audio_url,
         audio_media_type=audio_media_type,
+        audio_size_bytes=_parse_non_negative_integer(_attribute(enclosure, "length")),
         duration_seconds=_parse_duration(_text(item, "duration")),
         transcript_references=_parse_transcript_references(item),
     )
@@ -151,6 +152,16 @@ def _parse_duration(value: str | None) -> int | None:
     if len(numbers) == 3 and numbers[1] < 60 and numbers[2] < 60:
         return numbers[0] * 3600 + numbers[1] * 60 + numbers[2]
     return None
+
+
+def _parse_non_negative_integer(value: str | None) -> int | None:
+    if value is None:
+        return None
+    try:
+        parsed = int(value)
+    except ValueError:
+        return None
+    return parsed if parsed >= 0 else None
 
 
 def _required_text(parent: Element, name: str, *, context: str) -> str:

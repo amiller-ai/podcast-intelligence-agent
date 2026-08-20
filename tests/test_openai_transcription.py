@@ -6,7 +6,12 @@ from unittest.mock import Mock
 
 import pytest
 from openai import OpenAI
-from openai.types.audio.transcription import Transcription
+from openai.types.audio.transcription import (
+    Transcription,
+    UsageDuration,
+    UsageTokens,
+    UsageTokensInputTokenDetails,
+)
 
 from podcast_intelligence.audio_transcription import AudioTranscriptionProviderError
 from podcast_intelligence.openai_transcription import (
@@ -76,6 +81,8 @@ def test_openai_transcriber_chunks_in_order_preserves_ids_and_cleans_up(
     assert result.request_ids == ("req_1", "req_2")
     assert result.response_id == "req_1"
     assert result.chunk_count == 2
+    assert tuple(part.ordinal for part in result.parts) == (0, 1)
+    assert tuple(part.request_id for part in result.parts) == ("req_1", "req_2")
     assert chunker.duration_seconds == 1_800
     assert chunker.max_chunk_bytes == 25_000_000
     assert all(not path.exists() for path in chunker.paths)
@@ -85,6 +92,36 @@ def test_openai_transcriber_chunks_in_order_preserves_ids_and_cleans_up(
     assert second_call.kwargs["prompt"] == "First chunk transcript."
     assert first_call.kwargs["model"] == "gpt-transcribe"
     assert first_call.kwargs["response_format"] == "json"
+
+
+def test_openai_transcriber_normalizes_token_and_duration_usage(tmp_path: Path) -> None:
+    source = tmp_path / "episode.mp3"
+    source.write_bytes(b"source")
+    sdk_client = Mock(spec=OpenAI)
+    first = _transcription("First.", "req_1")
+    first.usage = UsageTokens(
+        type="tokens",
+        input_tokens=10,
+        output_tokens=5,
+        total_tokens=15,
+        input_token_details=UsageTokensInputTokenDetails(audio_tokens=9, text_tokens=1),
+    )
+    second = _transcription("Second.", "req_2")
+    second.usage = UsageDuration(type="duration", seconds=12.5)
+    sdk_client.audio.transcriptions.create.side_effect = [first, second]
+    transcriber = OpenAIAudioTranscriber(
+        Settings.model_validate({"openai_api_key": "test-key"}),
+        client=cast(OpenAI, sdk_client),
+        chunker=SyntheticChunker([b"first", b"second"]),
+    )
+
+    result = transcriber.transcribe(source, media_type="audio/mpeg", duration_seconds=60)
+
+    token_usage = result.parts[0].usage
+    duration_usage = result.parts[1].usage
+    assert token_usage is not None and token_usage.total_tokens == 15
+    assert token_usage.input_token_details_json == '{"audio_tokens":9,"text_tokens":1}'
+    assert duration_usage is not None and duration_usage.audio_seconds == 12.5
 
 
 def test_openai_transcriber_rejects_empty_or_unexpected_response(tmp_path: Path) -> None:
