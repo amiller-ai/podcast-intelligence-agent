@@ -1,6 +1,6 @@
 # Podcast Intelligence Roadmap
 
-Last updated: 2026-08-19
+Last updated: 2026-08-20
 
 This file is the durable source of truth for milestone state. `AGENTS.md` defines how work is performed; this roadmap records what is complete, what is current, and what is only proposed.
 
@@ -150,8 +150,6 @@ Out of scope:
 - Persistent audio or transcript storage
 - Podcast intelligence analysis, search, user interface, or deployment
 
-## Current
-
 ### Milestone 6 — SQLite transcript persistence and idempotent reuse
 
 Goal: run episode resolution and transcription as a resumable local data pipeline whose successful outputs are durably stored and reused, so the same unchanged episode is not downloaded or transcribed again.
@@ -211,7 +209,7 @@ Acceptance criteria:
 - [x] Keep the default test suite deterministic and network-free, including fresh migration, upgrade, rollback-on-failure, cache-hit, cache-miss, refresh, and corruption/error cases.
 - [x] Pass all repository quality gates, lockfile consistency, and a package build.
 
-Status: complete on 2026-08-19. It remains under **Current** until the user approves promotion of a proposed milestone.
+Status: complete on 2026-08-19.
 
 Completion evidence:
 
@@ -235,13 +233,111 @@ Out of scope:
 - Multi-process workers, queues, schedulers, hosted databases, replication, or deployment
 - User interface changes
 
+## Current
+
+### Milestone 7 — Evidence-grounded podcast intelligence
+
+Goal: turn one persisted canonical transcript into reproducible structured intelligence and evidence-grounded question answering through the Responses API, using bounded local SQLite retrieval without introducing embeddings, a hosted vector store, arbitrary SQL generation, or multi-agent orchestration.
+
+Architecture decisions:
+
+- Keep SQLite as the canonical source of transcript text, identity, provenance, and analysis history. Segments and search indexes are rebuildable derivatives tied to a canonical transcript content hash.
+- Keep deterministic ingestion separate from intelligence. Analysis and retrieval consume only successful persisted transcripts and never trigger episode resolution, audio download, or transcription.
+- Extend the existing application-owned Responses API client rather than adding the Agents SDK. One specialist with local read-only tools does not yet require handoffs or a multi-agent framework.
+- Never expose a database connection or arbitrary SQL tool to the model. Expose only typed, read-only application functions with strict JSON schemas, validated identifiers, episode isolation, bounded result counts, bounded excerpt sizes, and bounded tool-call loops.
+- Keep direct structured analysis separate from interactive retrieval. A known selected transcript may be analyzed directly within a measured context budget; open-ended questions use tools to retrieve bounded evidence before synthesis.
+- Continue sending `store=false` by default. Any future provider-side response, conversation, file, or vector-store persistence requires a separate explicit retention decision.
+- Treat transcript text as untrusted data, not instructions. Prompts must delimit transcript/tool content and prohibit following instructions found inside a transcript.
+
+Target architecture:
+
+```text
+Successful canonical transcript in SQLite
+  -> deterministic transcript segmentation
+  -> rebuildable SQLite FTS5 index
+  -> typed retrieval boundary
+       -> direct structured episode analysis
+       -> Responses API read-only tool loop for Q&A
+  -> exact evidence validation
+  -> versioned analysis persistence in SQLite
+```
+
+Segmentation and retrieval contract:
+
+- Do not use transcription provider parts as retrieval units; they reflect upload chunking rather than stable semantic boundaries.
+- Build deterministic, ordered transcript segments with `transcript_id`, ordinal, character start/end offsets, text, text hash, and segmenter version.
+- Derive segment identity from the canonical transcript content hash, segmenter version, and ordinal so a transcript or segmenter change produces a new rebuildable index identity.
+- Add a SQLite FTS5 derivative over segment text for initial lexical retrieval. Embeddings remain deferred until an evaluated question set demonstrates material lexical-retrieval gaps.
+- Return segment IDs, exact excerpts, character offsets, transcript identity, and retrieval scores; never return unbounded transcript text from a search call.
+- Provide three initial application-owned tools:
+  - `get_episode_metadata(episode_id)` for verified episode and transcript identity
+  - `search_transcript(episode_id, query, limit)` for bounded lexical retrieval
+  - `read_transcript_segments(segment_ids)` for exact bounded evidence expansion
+
+Responses API and tool-loop contract:
+
+- Define tools with strict schemas and `additionalProperties: false`; validate every tool call again in application code before executing it.
+- Preserve complete Responses output items during each loop, preserve every function call ID, and return tool results through the matching call ID without flattening state lineage into plain text.
+- Apply explicit limits to tool-call count, query length, result count, segment count, and total returned characters. Convert invalid arguments, unknown IDs, policy violations, and provider failures into safe application-owned errors.
+- Keep tool execution sequential initially. Parallel or programmatic tool calling requires separate evidence that it improves the bounded single-episode workflow.
+- Produce a final answer only from returned evidence and include stable application citations to transcript and segment IDs. The model must state when evidence is insufficient.
+
+Structured intelligence contract:
+
+- Define one typed Structured Output containing an episode summary, topics, people, claims, evidence, actionable insights, and limitations.
+- Require every material claim and actionable insight to reference at least one evidence object containing a segment ID and exact quote. Do not invent timestamps or speaker identity because the current transcript contract does not preserve diarization or time-aligned segments.
+- Validate evidence deterministically after the model response: the segment must exist, belong to the analyzed transcript identity, and contain the exact quoted text.
+- Build the analysis cache identity from transcript content hash, analysis type, model, prompt version, schema version, and segmenter version. Matching successful analyses are reused; explicit refresh preserves prior history.
+- Persist structured outputs only after schema and evidence validation succeed. Failed attempts retain safe state and provenance without partial canonical analysis rows.
+
+Minimum relational extension:
+
+| Table | Purpose |
+| --- | --- |
+| `transcript_segments` | Deterministic segment text, offsets, hashes, ordinal, transcript identity, and segmenter version |
+| `transcript_segments_fts` | Rebuildable SQLite FTS5 lexical index over segment text |
+| `analysis_runs` | Pending/running/succeeded/failed analysis attempts, cache identity, model/prompt/schema versions, response ID, usage, and safe errors |
+| `episode_analyses` | Validated canonical Structured Output linked to one successful analysis run |
+| `analysis_evidence` | Claim/insight evidence links to exact transcript segments and quotes |
+
+Evaluation and release gates:
+
+- Build deterministic synthetic fixtures covering segmentation, FTS ranking, bounded tools, invalid IDs, episode isolation, prompt injection inside transcript text, tool-loop state lineage, schema failures, provider failures, and persistence rollback.
+- Require 100% schema-valid outputs, existing segment references, exact quote matches, and evidence coverage for every material claim and actionable insight in the evaluation set.
+- Define a small known-answer question set before prompt tuning. Record retrieval results separately from answer groundedness so model synthesis cannot hide retrieval misses.
+- Test cache hit, cache miss, explicit refresh, prompt/schema/model version changes, and transcript-hash changes without network access.
+- Keep the default suite deterministic and network-free with injected or mocked Responses and retrieval boundaries.
+- Complete one explicit live evaluation on one user-selected already-persisted episode after credentials and authorization are confirmed. It must not download audio or retranscribe the episode, and its result must pass the same schema and exact-evidence gates before persistence.
+- Pass all repository quality gates, lockfile consistency, and a package build before completion.
+
+Acceptance criteria:
+
+- [ ] Add deterministic transcript segmentation and a rebuildable SQLite FTS5 index tied to canonical transcript and segmenter identities.
+- [ ] Add typed, bounded, read-only metadata, search, and segment-read boundaries without exposing arbitrary SQL or database handles.
+- [ ] Extend the Responses API boundary with a strict application-owned function-tool loop that preserves complete response items, call IDs, tool outputs, and state lineage.
+- [ ] Add the typed Structured Output contract for summaries, topics, people, claims, evidence, actionable insights, and limitations.
+- [ ] Enforce exact evidence ownership and quote matching before returning or persisting intelligence results.
+- [ ] Persist versioned analysis attempts, validated outputs, evidence links, response IDs, usage metadata, and safe failures transactionally.
+- [ ] Make successful analysis reuse idempotent across transcript, model, prompt, schema, and segmenter identities while preserving refresh history.
+- [ ] Treat transcripts as untrusted content, keep provider response storage disabled by default, and document analysis-data sensitivity and retention.
+- [ ] Add the deterministic retrieval, tool-loop, Structured Output, persistence, failure, cache, and evaluation coverage defined above.
+- [ ] Complete the authorized live evaluation without audio retrieval or retranscription and show the validated persisted result.
+- [ ] Pass all repository quality gates, lockfile consistency, and a package build.
+
+Status: approved and ready for implementation on 2026-08-20. The 2026-08-20 roadmap request approved promotion to **Current**; implementation and live evaluation are intentionally deferred to the next session.
+
+Out of scope:
+
+- Embeddings, local or hosted vector stores, OpenAI File Search, semantic retrieval, or reranking
+- Agents SDK adoption, multiple agents, specialist handoffs, or remote MCP servers
+- Cross-episode synthesis, external web research, or combining transcript evidence with unrelated sources
+- Arbitrary model-generated SQL, write-capable model tools, or transcript mutation
+- Diarization, speaker attribution, timestamp reconstruction, or retranscription
+- User interface, hosted database, workers, queues, schedulers, or deployment
+
 ## Proposed
 
 These milestones are directional and require approval before becoming current.
-
-### Milestone 7 — Structured podcast intelligence
-
-Define an evaluated Structured Output contract for summaries, topics, people, claims, evidence, and actionable insights. Test the schema and failure behavior before scaling beyond one episode.
 
 ### Milestone 8 — Personal application interface
 
