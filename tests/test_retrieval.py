@@ -61,6 +61,20 @@ def _stored(store: TranscriptStore) -> StoredTranscript:
         transcript=resolve_transcript_sources(episode),
     )
     episode_record = store.upsert_episode(resolved)
+    prior_run_id = store.create_run(
+        episode_record,
+        provider="openai",
+        model="gpt-transcribe",
+        chunker_version="test-chunker",
+        prompt_version="test-prompt",
+        estimated_cost_microusd=4_500,
+    )
+    store.mark_running(prior_run_id)
+    store.mark_failed(
+        prior_run_id,
+        error_code="SyntheticFailure",
+        safe_message="synthetic prior attempt",
+    )
     run_id = store.create_run(
         episode_record,
         provider="openai",
@@ -114,6 +128,7 @@ def test_tool_schemas_are_strict_and_all_properties_are_required(tmp_path: Path)
         tools = TranscriptTools(store, transcript, _settings(path))
         schemas = tools.tool_definitions()
 
+    assert transcript.run_id != transcript.episode_id
     assert [schema["name"] for schema in schemas] == [
         "get_episode_metadata",
         "search_transcript",
@@ -125,6 +140,15 @@ def test_tool_schemas_are_strict_and_all_properties_are_required(tmp_path: Path)
         assert isinstance(parameters, dict)
         assert parameters["additionalProperties"] is False
         assert set(parameters["required"]) == set(parameters["properties"])
+    for schema in schemas[:2]:
+        parameters = schema["parameters"]
+        assert isinstance(parameters, dict)
+        properties = parameters["properties"]
+        assert isinstance(properties, dict)
+        episode_id = properties["episode_id"]
+        assert isinstance(episode_id, dict)
+        assert episode_id["enum"] == [transcript.episode_id]
+        assert str(transcript.run_id) not in str(episode_id["description"])
 
 
 def test_metadata_search_and_exact_segment_read_are_bounded_and_scoped(tmp_path: Path) -> None:

@@ -192,6 +192,7 @@ def test_stateless_tool_loop_replays_complete_output_and_matching_call_id() -> N
     assert first_request["parallel_tool_calls"] is False
     assert first_request["include"] == ["reasoning.encrypted_content"]
     assert "character-for-character substring" in first_request["instructions"]
+    assert "run ID is a different identifier" in first_request["instructions"]
     assert "previous_response_id" not in second_request
     replay = second_request["input"]
     assert [item["type"] for item in replay[1:]] == [
@@ -280,7 +281,10 @@ def test_invalid_tool_call_is_an_application_owned_failure() -> None:
         client=cast(OpenAI, sdk_client),
     )
 
-    with pytest.raises(ResponsesToolLoopError, match="invalid retrieval"):
+    with pytest.raises(
+        ResponsesToolLoopError,
+        match=r"invalid retrieval.*arguments are not valid JSON",
+    ):
         client.answer_question("Question", tools)
 
 

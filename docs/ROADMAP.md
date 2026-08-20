@@ -451,10 +451,13 @@ Completion evidence:
   explicit `--yes`; they reuse the existing persistence, analysis, retrieval, and Responses
   boundaries and expose no ingestion or transcription command. Untrusted terminal text is escaped,
   and observable traces omit tool arguments, provider objects, and encrypted reasoning.
+- Retrieval identity contract: strict metadata and search tool schemas enumerate the selected
+  local episode ID and explicitly distinguish it from the transcript run ID accepted by the CLI;
+  application validation remains fail-closed and reports only a safe rejection reason.
 - Offline contract: listing and cached analysis reuse do not require an API key. Provider adapters
   require `OPENAI_API_KEY` only when constructed for a provider-bound operation, and a missing key
   creates no partial analysis or transcription run.
-- Validation: 218 deterministic offline tests passed with 91.43% total coverage; Ruff formatting
+- Validation: 218 deterministic offline tests passed with 91.44% total coverage; Ruff formatting
   and linting, strict mypy, lockfile consistency, source/wheel builds, and an installed console help
   smoke test all passed.
 - Live calls: none required or performed.

@@ -66,6 +66,15 @@ class TranscriptTools:
     def tool_definitions(self) -> tuple[dict[str, object], ...]:
         """Return strict JSON schemas with every argument required."""
 
+        selected_episode_id = self.transcript.episode_id
+        episode_id_parameter: dict[str, object] = {
+            "type": "integer",
+            "enum": [selected_episode_id],
+            "description": (
+                f"The selected local episode ID. It must be {selected_episode_id}; "
+                "a transcript run ID is a different identifier."
+            ),
+        }
         return (
             {
                 "type": "function",
@@ -77,10 +86,7 @@ class TranscriptTools:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "episode_id": {
-                            "type": "integer",
-                            "description": "The selected local episode ID.",
-                        }
+                        "episode_id": episode_id_parameter,
                     },
                     "required": ["episode_id"],
                     "additionalProperties": False,
@@ -96,7 +102,7 @@ class TranscriptTools:
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "episode_id": {"type": "integer"},
+                        "episode_id": episode_id_parameter,
                         "query": {
                             "type": "string",
                             "minLength": 1,
