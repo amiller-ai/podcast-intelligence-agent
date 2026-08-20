@@ -103,8 +103,6 @@ Privacy and retention contract:
 - Do not log Spotify embed payloads, playback URLs, anonymous tokens, or raw episode descriptions.
 - Preserve only normalized identifiers and source URLs in returned domain models.
 
-## Current
-
 ### Milestone 5 — Guarded audio transcription fallback
 
 Goal: when RSS exposes no usable transcript, retrieve an explicitly authorized RSS audio enclosure within strict network, duration, byte, cost, and retention limits and pass it to an application-owned transcription boundary. Never download audio from Spotify.
@@ -127,7 +125,7 @@ Acceptance criteria:
 - [x] Pass all repository quality gates and a package build.
 - [x] Complete one explicitly authorized live test on the supplied Spotify episode without persisting or printing audio or transcript content.
 
-Status: complete on 2026-08-19. This remains the single milestone under **Current** until the user approves promoting a proposed milestone.
+Status: complete on 2026-08-19.
 
 Completion evidence:
 
@@ -152,17 +150,84 @@ Out of scope:
 - Persistent audio or transcript storage
 - Podcast intelligence analysis, search, user interface, or deployment
 
+## Current
+
+### Milestone 6 — SQLite transcript persistence and idempotent reuse
+
+Goal: run episode resolution and transcription as a resumable local data pipeline whose successful outputs are durably stored and reused, so the same unchanged episode is not downloaded or transcribed again.
+
+Architecture decisions:
+
+- Use Python's built-in `sqlite3` module with explicit, versioned migrations; do not add an ORM or separate database service.
+- Keep the SQLite database as the canonical source of truth. Vector indexes, search indexes, and other retrieval structures remain future rebuildable derivatives.
+- Default the database to the ignored runtime path `data/podcast_intelligence.db`, with one centrally configured override for tests and alternate environments.
+- Keep feeds, episodes, transcription attempts, ordered provider parts, and assembled transcripts relational and independently addressable.
+- Store transcript text as UTF-8 SQLite `TEXT`, timestamps as UTC ISO 8601 text, durations and byte counts as integers, estimated costs as integer micro-US-dollars, and hashes as lowercase hexadecimal strings.
+- Preserve typed provider provenance per transcription part: ordinal, request ID, model, language, usage metadata, and text. Assemble the canonical transcript deterministically from those ordered parts.
+- Never persist downloaded audio or ffmpeg chunks. Continue deleting all temporary media on success and failure.
+
+Pipeline and cache contract:
+
+```text
+Spotify URL
+  -> verified RSS episode
+  -> source metadata fingerprint lookup
+  -> cached successful transcript, when unchanged
+  -> otherwise guarded transcript resolution or audio transcription
+  -> transactional SQLite persistence
+  -> canonical transcript returned to the caller
+```
+
+- Identify an episode by its canonical feed URL and RSS GUID, not by title alone.
+- Build the cheap pre-download source fingerprint from the enclosure URL, declared byte length, ETag, Last-Modified value, and declared duration when available.
+- Build the definitive transcription identity from the downloaded audio SHA-256, transcription model, chunker version, and transcription prompt version.
+- Treat a matching completed transcription as a cache hit and skip both audio download and OpenAI transcription. An explicit refresh may revalidate or replace it without destroying history.
+- Record pipeline state as pending, running, succeeded, or failed. Commit transcript parts and the assembled transcript atomically before marking a run succeeded.
+- Store application-owned failure codes and safe messages without raw transcript, audio, provider payload, or secret content.
+
+Minimum relational model:
+
+| Table | Purpose |
+| --- | --- |
+| `schema_migrations` | Applied migration versions and timestamps |
+| `feeds` | Canonical feed identity, URL, title, and observed metadata |
+| `episodes` | Feed-scoped RSS GUID, title, publication data, enclosure metadata, and source fingerprint |
+| `transcription_runs` | Attempt state, cache identity, model/chunker/prompt versions, cost estimate, byte count, audio hash, and timestamps |
+| `transcript_parts` | Ordered text, request ID, language, and usage metadata for each provider chunk |
+| `transcripts` | One canonical assembled transcript, content hash, and provenance link per successful run |
+
+Acceptance criteria:
+
+- [ ] Add centrally configured SQLite settings with a safe ignored default path and no implicit creation outside the configured runtime directory.
+- [ ] Add an application-owned persistence boundary using `sqlite3`, foreign-key enforcement, explicit transactions, and deterministic versioned migrations.
+- [ ] Create the minimum relational model above with uniqueness, foreign-key, status, and non-negative resource constraints enforced in SQLite.
+- [ ] Persist verified feed and episode identity without using title as a primary or cache key.
+- [ ] Extend the transcription result contract to preserve ordered provider parts and persist their request IDs, text, language, usage metadata, and model provenance.
+- [ ] Compute and persist source fingerprints, audio SHA-256, transcript content hashes, model identity, chunker version, prompt version, estimated cost, and byte count.
+- [ ] Return a matching successful cached transcript before audio retrieval or provider invocation, with deterministic tests proving those boundaries were not called.
+- [ ] Make repeated ingestion idempotent and preserve prior successful history when an explicit refresh produces a new source or transcription identity.
+- [ ] Persist success atomically; record safe failed-run state without partial transcript rows or raw content in logs/errors.
+- [ ] Keep audio and ffmpeg chunks temporary, keep the database and other runtime data ignored by Git, and document local transcript sensitivity and backup expectations.
+- [ ] Keep the default test suite deterministic and network-free, including fresh migration, upgrade, rollback-on-failure, cache-hit, cache-miss, refresh, and corruption/error cases.
+- [ ] Pass all repository quality gates, lockfile consistency, and a package build.
+
+Status: approved and ready for implementation on 2026-08-19.
+
+Out of scope:
+
+- Embeddings, vector stores, semantic search, or retrieval ranking
+- Structured podcast intelligence or Responses API analysis
+- Persisting audio, temporary chunks, API keys, or unrelated provider payloads
+- Multi-process workers, queues, schedulers, hosted databases, replication, or deployment
+- User interface changes
+
 ## Proposed
 
 These milestones are directional and require approval before becoming current.
 
-### Milestone 6 — Structured podcast intelligence
+### Milestone 7 — Structured podcast intelligence
 
 Define an evaluated Structured Output contract for summaries, topics, people, claims, evidence, and actionable insights. Test the schema and failure behavior before scaling beyond one episode.
-
-### Milestone 7 — Local persistence and retrieval
-
-Persist feed, episode, transcript, and analysis records locally with explicit migrations and idempotent updates. Add search only after the query requirements are defined.
 
 ### Milestone 8 — Personal application interface
 
