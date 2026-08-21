@@ -577,6 +577,24 @@ Post-completion analysis recovery fix (2026-08-21):
   passing.
 - Live calls: none required or performed.
 
+Post-completion analysis output-budget fix (2026-08-21):
+
+- Observed diagnosis: the user-triggered All-In retry returned a provider response ID and exactly
+  exhausted the configured 8,000 output tokens after 25,096 input tokens. No transcript or partial
+  provider output was inspected or persisted during diagnosis.
+- Runtime contract: `INTELLIGENCE_MAX_ANALYSIS_OUTPUT_TOKENS` now reserves 25,000 tokens for
+  full-episode analysis because the Responses API counts both reasoning and visible output against
+  this bound. The smaller question-output bound is unchanged. The local ignored `.env` was updated
+  so the fix takes effect after the backend restarts.
+- Failure contract: `incomplete_details.reason=max_output_tokens` is now a distinct typed failure and
+  safe HTTP/UI error instead of the generic incomplete-response category. The application does not
+  automatically issue a second billable request.
+- Validation: 237 deterministic Python tests passed with 90.73% total coverage; Ruff formatting and
+  lint, strict mypy, lockfile consistency, and source/wheel builds passed. Seventeen Vitest tests
+  passed with 95.32% statement and 87.33% branch coverage; OpenAPI drift, Prettier, Oxlint,
+  TypeScript, the production build, and both Playwright full-stack tests passed.
+- Live calls: none performed by the implementation or validation workflow.
+
 Out of scope:
 
 - Triggering episode resolution, audio download, transcription, upload, or transcript editing from

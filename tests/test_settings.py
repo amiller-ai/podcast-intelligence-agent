@@ -27,6 +27,7 @@ def test_settings_have_safe_explicit_defaults() -> None:
     assert settings.intelligence_max_tool_output_chars == 16_000
     assert settings.intelligence_max_tool_calls == 6
     assert settings.intelligence_max_output_tokens == 8_000
+    assert settings.intelligence_max_analysis_output_tokens == 25_000
     assert settings.intelligence_max_analysis_chars == 250_000
 
 
@@ -65,6 +66,7 @@ def test_settings_reject_invalid_transcription_limits(field: str, value: object)
         "intelligence_max_tool_output_chars",
         "intelligence_max_tool_calls",
         "intelligence_max_output_tokens",
+        "intelligence_max_analysis_output_tokens",
         "intelligence_max_analysis_chars",
     ],
 )

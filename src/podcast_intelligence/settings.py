@@ -36,6 +36,7 @@ class Settings(BaseSettings):
     intelligence_max_tool_output_chars: int = 16_000
     intelligence_max_tool_calls: int = 6
     intelligence_max_output_tokens: int = 8_000
+    intelligence_max_analysis_output_tokens: int = 25_000
     intelligence_max_analysis_chars: int = 250_000
 
     @field_validator("openai_api_key")
@@ -102,6 +103,7 @@ class Settings(BaseSettings):
         "intelligence_max_tool_output_chars",
         "intelligence_max_tool_calls",
         "intelligence_max_output_tokens",
+        "intelligence_max_analysis_output_tokens",
         "intelligence_max_analysis_chars",
     )
     @classmethod

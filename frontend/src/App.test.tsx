@@ -237,6 +237,28 @@ describe("Podcast Intelligence UI", () => {
     );
   });
 
+  it("explains when analysis exhausts its reasoning and output budget", async () => {
+    const user = userEvent.setup();
+    const runAnalysis = vi.fn(async () => {
+      throw new ApiError(
+        502,
+        "analysis_output_limit",
+        "OpenAI reached the podcast analysis token limit. Try again.",
+      );
+    });
+    render(<App api={fakeApi({ runAnalysis })} />);
+    await selectEpisode(user);
+
+    await user.click(screen.getByRole("button", { name: "Refresh analysis" }));
+    await user.click(
+      screen.getByRole("button", { name: "I consent, continue" }),
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "OpenAI reached the podcast analysis token limit. Try again.",
+    );
+  });
+
   it("starts missing analysis, supports Escape cancellation, and reuses a cache hit", async () => {
     const user = userEvent.setup();
     const runAnalysis = vi.fn(async () => analysis);

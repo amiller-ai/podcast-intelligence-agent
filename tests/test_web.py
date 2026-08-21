@@ -24,6 +24,7 @@ from podcast_intelligence.responses_client import (
     QuestionResponse,
     ResponsesClientError,
     ResponsesContextBudgetError,
+    ResponsesOutputLimitError,
     ResponsesOutputValidationError,
     ResponseUsageSummary,
     ToolCallTrace,
@@ -256,6 +257,18 @@ def test_analysis_maps_cache_status_and_refresh(tmp_path: Path) -> None:
             422,
             "analysis_context_too_large",
             "The transcript exceeds the configured analysis context limit.",
+        ),
+        (
+            ResponsesOutputLimitError(
+                "SENSITIVE OUTPUT LIMIT",
+                response_id="resp_exhausted",
+                usage=ResponseUsageSummary(
+                    input_tokens=25_096, output_tokens=8_000, total_tokens=33_096
+                ),
+            ),
+            502,
+            "analysis_output_limit",
+            "OpenAI reached the podcast analysis token limit. Try again.",
         ),
     ],
 )

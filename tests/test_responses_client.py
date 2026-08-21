@@ -1,4 +1,4 @@
-from typing import cast
+from typing import Any, cast
 from unittest.mock import Mock
 
 import pytest
@@ -10,6 +10,7 @@ from openai.types.responses import (
     ResponseOutputText,
     ResponseReasoningItem,
 )
+from openai.types.responses.response import IncompleteDetails
 
 from podcast_intelligence.intelligence_models import TranscriptSegment
 from podcast_intelligence.persistence import StoredTranscript
@@ -17,6 +18,7 @@ from podcast_intelligence.responses_client import (
     PodcastResponsesClient,
     ResponsesContextBudgetError,
     ResponsesIncompleteError,
+    ResponsesOutputLimitError,
     ResponsesOutputValidationError,
     ResponsesProviderRequestError,
     ResponsesToolLoopError,
@@ -72,6 +74,7 @@ def _response(
     *,
     output_text: str = "",
     status: str = "completed",
+    incomplete_reason: str | None = None,
 ) -> Mock:
     response = Mock(spec=Response)
     response.id = response_id
@@ -80,6 +83,11 @@ def _response(
     response.output = output
     response.output_text = output_text
     response.usage = None
+    response.incomplete_details = (
+        None
+        if incomplete_reason is None
+        else IncompleteDetails(reason=cast(Any, incomplete_reason))
+    )
     return response
 
 
@@ -193,6 +201,7 @@ def test_stateless_tool_loop_replays_complete_output_and_matching_call_id() -> N
     assert sdk_client.responses.create.call_count == 2
     first_request = sdk_client.responses.create.call_args_list[0].kwargs
     second_request = sdk_client.responses.create.call_args_list[1].kwargs
+    assert first_request["max_output_tokens"] == 8_000
     assert first_request["store"] is False
     assert first_request["parallel_tool_calls"] is False
     assert first_request["include"] == ["reasoning.encrypted_content"]
@@ -356,6 +365,16 @@ def test_incomplete_or_schema_invalid_final_response_fails_closed() -> None:
     assert incomplete.value.response_id == "resp_incomplete"
 
     sdk_client.responses.create.return_value = _response(
+        "resp_output_limit",
+        [],
+        status="incomplete",
+        incomplete_reason="max_output_tokens",
+    )
+    with pytest.raises(ResponsesOutputLimitError, match="output-token budget") as exhausted:
+        client.answer_question("Question", _mock_tools())
+    assert exhausted.value.response_id == "resp_output_limit"
+
+    sdk_client.responses.create.return_value = _response(
         "resp_invalid",
         [_message("msg_invalid")],
         output_text='{"answer":"missing fields"}',
@@ -427,6 +446,7 @@ def test_structured_episode_analysis_uses_strict_schema_and_exact_evidence() -> 
     ]
     assert "character-for-character substring" in quote_schema["description"]
     assert segment_id in request["input"][0]["content"]
+    assert request["max_output_tokens"] == 25_000
 
 
 def test_structured_episode_analysis_rejects_inexact_evidence_and_context_overflow() -> None:

@@ -160,6 +160,9 @@ RUN_LIVE_PODCAST_INTELLIGENCE=1 uv run pytest \
 - Keep speech-to-text model and price configuration separate through `OPENAI_TRANSCRIPTION_MODEL` and `OPENAI_TRANSCRIPTION_COST_PER_MINUTE_USD`.
 - Keep the SQLite location configurable through `DATABASE_PATH`; its safe ignored default is `data/podcast_intelligence.db`.
 - Keep segmentation, retrieval, tool-loop, output, and context limits centrally configurable through the `INTELLIGENCE_*` settings.
+- Reserve 25,000 reasoning-and-output tokens for full-episode analysis through
+  `INTELLIGENCE_MAX_ANALYSIS_OUTPUT_TOKENS`; the Responses API counts both reasoning and visible
+  output against this bound. Keep the smaller `INTELLIGENCE_MAX_OUTPUT_TOKENS` bound for questions.
 - Keep reasoning effort configurable through `OPENAI_REASONING_EFFORT`; the initial baseline is `medium`.
 - Keep Responses requests bounded through `OPENAI_RESPONSES_TIMEOUT_SECONDS`; the local default is 600 seconds.
 - Disable API response storage by default through `OPENAI_STORE_RESPONSES=false`.
@@ -178,6 +181,7 @@ Durable contributor and coding-agent instructions live in [`AGENTS.md`](AGENTS.m
 - [Responses API guide](https://developers.openai.com/api/docs/guides/migrate-to-responses)
 - [Conversation state](https://developers.openai.com/api/docs/guides/conversation-state)
 - [Structured Outputs](https://developers.openai.com/api/docs/guides/structured-outputs)
+- [Reasoning models](https://developers.openai.com/api/docs/guides/reasoning)
 - [File transcription](https://developers.openai.com/api/docs/guides/speech-to-text)
 - [API pricing](https://developers.openai.com/api/docs/pricing)
 - [API data controls](https://developers.openai.com/api/docs/guides/your-data)

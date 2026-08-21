@@ -45,6 +45,7 @@ from podcast_intelligence.responses_client import (
     ResponsesClientError,
     ResponsesContextBudgetError,
     ResponsesIncompleteError,
+    ResponsesOutputLimitError,
     ResponsesOutputValidationError,
     ResponsesToolLoopError,
     ResponseUsageSummary,
@@ -365,6 +366,12 @@ def _analysis_api_failure(error: ResponsesClientError) -> _ApiFailure:
                 "validated. Try again."
             ),
         )
+    if isinstance(error, ResponsesOutputLimitError):
+        return _ApiFailure(
+            502,
+            "analysis_output_limit",
+            "OpenAI reached the podcast analysis token limit. Try again.",
+        )
     if isinstance(error, ResponsesIncompleteError):
         return _ApiFailure(
             502,
@@ -383,6 +390,12 @@ def _question_api_failure(error: ResponsesClientError) -> _ApiFailure:
                 "OpenAI completed the request, but its answer could not be safely "
                 "validated. Try again."
             ),
+        )
+    if isinstance(error, ResponsesOutputLimitError):
+        return _ApiFailure(
+            502,
+            "answer_output_limit",
+            "OpenAI reached the answer token limit. Try a narrower question.",
         )
     if isinstance(error, ResponsesIncompleteError):
         return _ApiFailure(

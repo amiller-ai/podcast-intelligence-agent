@@ -110,6 +110,10 @@ class ResponsesIncompleteError(ResponsesResultError):
     """Raised when the provider response did not complete."""
 
 
+class ResponsesOutputLimitError(ResponsesIncompleteError):
+    """Raised when reasoning and output exhaust the configured token budget."""
+
+
 class ResponsesOutputValidationError(ResponsesResultError):
     """Raised when a completed response cannot pass local output validation."""
 
@@ -211,11 +215,7 @@ class PodcastResponsesClient:
                 raise ResponsesProviderRequestError("Responses provider request failed") from error
 
             if response.status != "completed":
-                raise ResponsesIncompleteError(
-                    "Responses provider returned an incomplete result",
-                    response_id=response.id,
-                    usage=_usage_from_response(response),
-                )
+                raise _incomplete_response_error(response, result_name="result")
             response_ids.append(response.id)
             item_types = tuple(str(item.type) for item in response.output)
             output_item_types.append(item_types)
@@ -312,17 +312,13 @@ class PodcastResponsesClient:
                 instructions=_ANALYSIS_INSTRUCTIONS,
                 text=cast(Any, _structured_text_format(EpisodeAnalysis, "episode_analysis")),
                 reasoning=reasoning,
-                max_output_tokens=self._settings.intelligence_max_output_tokens,
+                max_output_tokens=self._settings.intelligence_max_analysis_output_tokens,
                 store=False,
             )
         except OpenAIError as error:
             raise ResponsesProviderRequestError("Responses provider request failed") from error
         if response.status != "completed":
-            raise ResponsesIncompleteError(
-                "Responses provider returned an incomplete analysis",
-                response_id=response.id,
-                usage=_usage_from_response(response),
-            )
+            raise _incomplete_response_error(response, result_name="analysis")
         try:
             analysis = EpisodeAnalysis.model_validate_json(response.output_text)
             analysis = canonicalize_analysis_evidence(
@@ -368,6 +364,28 @@ def _usage_from_response(response: Any) -> ResponseUsageSummary:
         input_tokens=int(provider_usage.input_tokens),
         output_tokens=int(provider_usage.output_tokens),
         total_tokens=int(provider_usage.total_tokens),
+    )
+
+
+def _incomplete_response_error(
+    response: Any,
+    *,
+    result_name: str,
+) -> ResponsesIncompleteError:
+    details = response.incomplete_details
+    reason = None if details is None else details.reason
+    error_type = (
+        ResponsesOutputLimitError if reason == "max_output_tokens" else ResponsesIncompleteError
+    )
+    message = (
+        "Responses provider exhausted the configured output-token budget"
+        if error_type is ResponsesOutputLimitError
+        else f"Responses provider returned an incomplete {result_name}"
+    )
+    return error_type(
+        message,
+        response_id=response.id,
+        usage=_usage_from_response(response),
     )
 
 
