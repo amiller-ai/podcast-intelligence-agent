@@ -606,3 +606,264 @@ Out of scope:
   research
 - A component library, global state framework, or design system before the initial workflow shows a
   concrete need
+
+## Proposed
+
+The following milestones are planning-only. None is **Current** until the user approves that one
+milestone and its acceptance criteria. Each milestone must preserve the existing local-only storage,
+explicit transmission consent, exact-evidence validation, typed OpenAPI contract, and deterministic
+offline quality gates.
+
+### Target workspace information architecture
+
+```text
+Episode library          Selected episode
+┌──────────────────┐     ┌──────────────────────────────────────────────┐
+│ Search / filter  │     │ Title, source, status, primary actions       │
+│ + Add episode    │     ├──────────────────────────────────────────────┤
+│ Episode cards    │     │ Summary                                      │
+│ Ingestion status │     ├──────────────────────────────────────────────┤
+└──────────────────┘     │ Explore [Themes ▾]  Item list  Evidence pane │
+                         ├──────────────────────────────────────────────┤
+                         │ Saved Q&A thread                              │
+                         │ [Ask about this episode…              Send]  │
+                         └──────────────────────────────────────────────┘
+```
+
+The “Themes” control means transcript-supported subject matter, not the light/dark color scheme.
+On desktop, selecting a theme or claim should open a focused evidence pane; on narrow screens, the
+same relationship should become an accessible accordion or drawer. Long response, call, and segment
+identifiers should remain available for debugging without dominating the reading experience.
+
+### Proposed Milestone 10 — Readable episode workspace redesign
+
+Goal: restructure the existing UI around progressive disclosure so a user can understand an episode
+before opening its evidence and can move between analysis and Q&A without scanning one long technical
+page.
+
+Acceptance criteria:
+
+- [ ] Connect an in-app or extension browser to the running local application and complete an
+  evidence-backed visual audit at desktop and 390-pixel widths before editing UI behavior.
+- [ ] Preserve the episode library while improving episode-card density, selected state, status, and
+  room for a future “Add episode” action.
+- [ ] Put the episode title, analysis state, high-level summary, and primary action above the fold.
+- [ ] Replace the always-expanded analysis grid with one accessible Explore control for Themes,
+  People, Claims, Actionable insights, and Limitations.
+- [ ] Let a user select one analysis item and inspect its exact excerpts in a dedicated pane, drawer,
+  or accordion without losing their place.
+- [ ] Display short human labels for evidence by default; retain full segment IDs and model/usage
+  metadata behind copyable details.
+- [ ] Keep Q&A visually adjacent to the analysis with a compact composer that remains easy to find
+  after exploring evidence.
+- [ ] Improve measure, line height, spacing, contrast, hierarchy, keyboard navigation, focus states,
+  reduced motion, and light/dark system-mode behavior without adding a component framework.
+- [ ] Preserve current API contracts, consent behavior, exact evidence, tool-trace privacy, and
+  responsive behavior.
+- [ ] Add component and Playwright coverage for category selection, evidence disclosure, keyboard
+  interaction, desktop layout, and narrow layout; require a connected-browser visual acceptance pass.
+
+Out of scope:
+
+- Q&A persistence, model streaming, ingestion, or transcription changes
+- Showing the full raw transcript by default
+- A global state library, component library, or bespoke design system
+
+### Proposed Milestone 11 — Persisted episode Q&A history
+
+Goal: replace the single ephemeral answer with a transcript-scoped local Q&A thread that survives
+reloads and makes prior questions, answers, citations, and provenance easy to revisit.
+
+Acceptance criteria:
+
+- [ ] Add a versioned SQLite model for question turns, validated answers, evidence links, response
+  lineage, safe tool traces, usage, model/prompt/retrieval versions, status, and timestamps.
+- [ ] Scope every turn to one canonical transcript and content hash; never reuse an answer across a
+  changed transcript or incompatible model, prompt, schema, segmenter, or retrieval version.
+- [ ] Persist only completed, schema-valid, evidence-valid answers; retain safe failed-attempt metadata
+  without partial model output or reasoning.
+- [ ] Return transcript-scoped history through typed, paginated FastAPI responses without selecting or
+  exposing the full transcript.
+- [ ] Render a chronological question-and-answer thread with collapsed citations and optional safe
+  trace details.
+- [ ] Keep the composer available below the thread and preserve duplicate-submission, loading,
+  consent, empty, insufficiency, and failure states.
+- [ ] Reuse an identical validated question only when its complete cache identity matches; label cache
+  reuse clearly in the UI.
+- [ ] Support clearing one episode's Q&A history with explicit confirmation while preserving analyses
+  and transcripts.
+- [ ] Document that locally stored questions may contain sensitive user-derived content and define the
+  same backup/retention expectations as transcripts.
+- [ ] Cover migrations, cache hit/miss, transcript/version isolation, atomic success, safe failure,
+  pagination, clearing, reload restoration, and responsive thread behavior offline.
+
+Out of scope:
+
+- Treating earlier answers as model context for follow-up questions
+- Cross-episode threads or remote synchronization
+- Streaming partial answers
+
+### Proposed Milestone 12 — Safe streaming Q&A lifecycle
+
+Goal: reduce perceived Q&A latency through one-way server-sent events while preserving the rule that
+only a completed, validated answer is presented as evidence-grounded truth.
+
+Architecture decisions:
+
+- Prefer HTTP server-sent events over WebSockets because the initial flow is one request with
+  one-way progress and output events.
+- Consume typed Responses API stream events such as `response.created`,
+  `response.output_text.delta`, `response.completed`, and `error` behind the existing client
+  boundary. Do not expose provider SDK objects directly to FastAPI or React.
+- Treat partial text as an explicitly labeled draft. Do not attach the “Evidence supported” state,
+  persist a turn, or retain partial output unless the completed Structured Output passes schema,
+  transcript-ownership, segment, and exact-quote validation.
+- Stream analysis progress states initially, not raw Structured Output JSON. Analysis remains a final
+  validated document until a useful and safe partial-analysis contract is designed.
+
+Acceptance criteria:
+
+- [ ] Define an application-owned discriminated event contract for accepted, retrieval progress,
+  safe tool completion, draft answer delta, validating, completed, and safe failure states.
+- [ ] Add a consent-gated streaming Q&A endpoint whose event data is typed from backend schemas and
+  contains no reasoning content, raw tool arguments, API keys, or transcript text beyond approved
+  answer/evidence fields.
+- [ ] Preserve complete Responses item lineage and exact function `call_id` pairing while consuming
+  typed provider events.
+- [ ] Buffer enough state to run the existing final schema and exact-evidence validation before
+  marking the streamed answer complete or persisting it.
+- [ ] Retract or clearly invalidate a draft if the provider, schema, tool loop, or evidence check
+  fails; never leave failed draft text styled as a validated answer.
+- [ ] Stop local consumption when the browser disconnects and avoid persisting incomplete turns;
+  document provider-cancellation limitations explicitly.
+- [ ] Show meaningful stages such as retrieving, drafting, and validating without fake percentage
+  progress.
+- [ ] Keep the existing non-streaming endpoint as a deterministic fallback until streaming parity is
+  proven.
+- [ ] Test event ordering, fragmented data frames, UTF-8 boundaries, disconnects, retries, incomplete
+  responses, validation failure, final persistence, and no-sensitive-data events with mocked streams.
+- [ ] Pass component and Playwright tests for progressive rendering, draft/validated distinction,
+  cancellation, safe failure, and keyboard/screen-reader announcements.
+
+OpenAI contract note: current [official OpenAI streaming guidance](https://developers.openai.com/api/docs/guides/streaming-responses)
+uses `stream=true` over SSE and typed semantic events. It also warns that partial completions are
+harder to moderate, which reinforces the draft-until-validated presentation contract.
+
+### Proposed Milestone 13 — Contextual follow-up Q&A
+
+Goal: make saved Q&A feel conversational without allowing an earlier model answer to become
+unverified evidence for a later answer.
+
+Acceptance criteria:
+
+- [ ] Let a user start a new thread or ask a follow-up in an existing transcript-scoped thread.
+- [ ] Carry only a bounded, explicit turn window and preserve complete Responses lineage when prior
+  items are reused.
+- [ ] Require fresh transcript retrieval and exact evidence for every material follow-up answer;
+  prior assistant text is context, not evidence.
+- [ ] Resolve references such as “that claim” only when the selected thread provides unambiguous
+  context; otherwise ask the user to clarify.
+- [ ] Offer a small set of deterministic suggested questions derived from the validated analysis
+  categories, not another provider call.
+- [ ] Expose “new thread,” “clear thread,” retry, cache, and insufficiency states without mixing
+  separate episode identities.
+- [ ] Add evaluation cases for pronoun/reference resolution, contradiction with prior turns, retrieval
+  freshness, citation ownership, cache isolation, and bounded tool-call behavior.
+
+Out of scope:
+
+- Cross-episode synthesis or long-term user memory
+- Treating conversation history as a substitute for transcript retrieval
+
+### Proposed Milestone 14 — Browser ingestion preflight
+
+Goal: let a user submit one Spotify episode URL from the local UI and understand exactly what will be
+resolved, downloaded, transmitted, retained, and estimated to cost before transcription begins.
+
+Acceptance criteria:
+
+- [ ] Accept only the canonical Spotify episode URL already supported by the verified resolver; do not
+  add arbitrary RSS, webpage, upload, or Spotify playback URL inputs in this slice.
+- [ ] Add a guarded backend preflight endpoint that reuses canonical resolution, RSS GUID verification,
+  transcript-source discovery, network controls, and policy limits.
+- [ ] Return typed episode identity, cache status, source outcome, declared duration and bytes when
+  known, transcription model, estimated cost, and any blocking policy reason without returning raw
+  catalog/feed payloads or transcript content.
+- [ ] Add an “Add episode” flow with URL validation, resolving, preview, cached, eligible, and blocked
+  states.
+- [ ] Separate metadata/network preflight from explicit authorization to download audio and send it to
+  OpenAI.
+- [ ] Bind the confirmation to the exact resolved feed URL, RSS GUID, enclosure identity, model,
+  duration, byte limit, and displayed cost estimate so stale previews cannot authorize changed input.
+- [ ] Expire or reject stale preflights and require revalidation before transcription.
+- [ ] Keep keys, database paths, Spotify tokens, playback URLs, raw feeds, and provider SDK objects out
+  of the browser contract and logs.
+- [ ] Test malformed/unsafe URLs, redirect revalidation, ambiguous catalog matches, GUID mismatch,
+  cache hit, no enclosure, cost/size/duration blocks, stale confirmation, and sanitized failures with
+  mocked network boundaries.
+- [ ] Keep actual audio download and transcription out of this milestone.
+
+### Proposed Milestone 15 — Local background transcription jobs
+
+Goal: turn an approved ingestion preflight into a durable local transcription job that can outlive UI
+navigation and safely add the completed episode to the library.
+
+Architecture decisions:
+
+- Start with one bounded in-process worker and SQLite job state; do not add Redis, Celery, a hosted
+  queue, or another database for a single-user local application.
+- Return a job identifier immediately and poll typed status initially. Reuse SSE only after the job
+  lifecycle is durable and polling behavior is proven.
+- Reuse the existing idempotent pipeline, source/audio caches, temporary-media deletion, cost/size/
+  duration controls, and atomic transcript persistence.
+
+Acceptance criteria:
+
+- [ ] Start a job only from a valid, unexpired preflight and explicit authorization bound to that
+  preflight.
+- [ ] Persist pending, resolving, downloading, chunking, transcribing, assembling, succeeded, failed,
+  and interrupted states with safe timestamps and resource metadata.
+- [ ] Return typed job status without audio, transcript text, provider payloads, or secrets.
+- [ ] Show durable progress stages in the episode library and an ingestion detail view; do not display
+  fake percentages when exact progress is unavailable.
+- [ ] Keep temporary audio/chunks private and delete them after success, every failure, interruption,
+  and supported cancellation point.
+- [ ] On server restart, mark orphaned work interrupted and offer an explicit safe retry that reuses
+  existing caches rather than silently starting duplicate provider work.
+- [ ] Make successful jobs appear in the episode library without a full-page reload and offer analysis
+  as the next explicit action.
+- [ ] Preserve safe failure codes and allow retry without deleting prior successful history.
+- [ ] Test job state transitions, duplicate submission, restart recovery, cache reuse, failure cleanup,
+  navigation/reload status restoration, and successful library refresh offline with injected
+  boundaries.
+- [ ] Run one separately approved live end-to-end browser ingestion only after all offline gates pass;
+  record duration, bytes, estimated cost, provider requests, persistence readback, cache reuse, and
+  temporary-media cleanup without printing transcript content.
+
+Out of scope:
+
+- Multiple concurrent workers, distributed queues, remote deployment, multi-user isolation, uploads,
+  arbitrary RSS URLs, scheduling, automatic subscriptions, or cross-device synchronization
+
+### Proposed execution order
+
+1. Approve and implement Milestone 10 alone, using a connected-browser audit and agreed wireframe as
+   its visual baseline.
+2. Add Milestone 11 so the redesigned Q&A surface has durable history before streaming introduces
+   partial states.
+3. Add Milestone 12 and prove SSE event, cancellation, validation, and persistence parity.
+4. Add Milestone 13 only if transcript-scoped history is useful enough to justify conversational
+   follow-up complexity.
+5. Add Milestone 14 preflight before authorizing any browser-triggered download or provider call.
+6. Add Milestone 15 only after the preflight contract and job lifecycle are approved.
+
+Decisions required before promotion:
+
+- Confirm Milestone 10 as the next **Current** milestone and agree on its connected-browser visual
+  baseline.
+- Confirm that initial browser ingestion remains Spotify-episode-only rather than expanding to RSS
+  URLs or local uploads.
+- Confirm that streamed partial answer text may appear only as a visibly unvalidated draft, or choose
+  progress-only streaming with the answer revealed after validation.
+- Confirm whether identical-question cache reuse is desirable or whether history should always permit
+  a fresh paid answer.
