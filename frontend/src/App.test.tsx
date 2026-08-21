@@ -215,6 +215,28 @@ describe("Podcast Intelligence UI", () => {
     expect(screen.getByText("Created")).toBeInTheDocument();
   });
 
+  it("explains when OpenAI completed analysis but evidence validation failed", async () => {
+    const user = userEvent.setup();
+    const runAnalysis = vi.fn(async () => {
+      throw new ApiError(
+        502,
+        "analysis_output_invalid",
+        "OpenAI completed the request, but its analysis could not be safely validated. Try again.",
+      );
+    });
+    render(<App api={fakeApi({ runAnalysis })} />);
+    await selectEpisode(user);
+
+    await user.click(screen.getByRole("button", { name: "Refresh analysis" }));
+    await user.click(
+      screen.getByRole("button", { name: "I consent, continue" }),
+    );
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "OpenAI completed the request, but its analysis could not be safely validated. Try again.",
+    );
+  });
+
   it("starts missing analysis, supports Escape cancellation, and reuses a cache hit", async () => {
     const user = userEvent.setup();
     const runAnalysis = vi.fn(async () => analysis);

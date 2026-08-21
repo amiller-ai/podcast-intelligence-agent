@@ -559,6 +559,24 @@ Completion evidence:
   wheel includes the compiled UI and passed an isolated install/runtime smoke test.
 - Live calls: none required or performed.
 
+Post-completion analysis recovery fix (2026-08-21):
+
+- Evidence recovery: completed Structured Outputs may repair a wrong segment ID or punctuation and
+  capitalization drift only when the quote maps to one unique exact source substring across the
+  selected transcript. Exact citations remain unchanged; paraphrases and ambiguous matches still
+  fail closed.
+- Failure contract: provider request failures, incomplete responses, context-limit failures, and
+  completed-but-invalid outputs now have distinct safe application and HTTP categories. Rejected
+  completed analyses retain only response ID and token usage in failed-run metadata; invalid output
+  and transcript content are not persisted or exposed.
+- Validation: 235 deterministic Python tests passed with 90.75% total coverage; Ruff formatting and
+  lint, strict mypy, lockfile consistency, and source/wheel builds passed. Sixteen Vitest tests passed
+  with 95.32% statement and 87.33% branch coverage; OpenAPI drift, Prettier, Oxlint, TypeScript, and
+  the production build passed. Both Playwright full-stack tests passed. The optional in-app browser
+  visual pass was unavailable because no browser session was connected and was not represented as
+  passing.
+- Live calls: none required or performed.
+
 Out of scope:
 
 - Triggering episode resolution, audio download, transcription, upload, or transcript editing from

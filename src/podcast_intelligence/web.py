@@ -43,6 +43,10 @@ from podcast_intelligence.persistence import (
 from podcast_intelligence.responses_client import (
     QuestionResponse,
     ResponsesClientError,
+    ResponsesContextBudgetError,
+    ResponsesIncompleteError,
+    ResponsesOutputValidationError,
+    ResponsesToolLoopError,
     ResponseUsageSummary,
     ToolCallTrace,
 )
@@ -270,8 +274,8 @@ def create_app(
                     store=store,
                     refresh=request.refresh,
                 )
-        except ResponsesClientError:
-            raise _ApiFailure(502, "provider_failed", "Podcast analysis failed safely.") from None
+        except ResponsesClientError as error:
+            raise _analysis_api_failure(error) from None
         except ValueError:
             raise _ApiFailure(
                 503,
@@ -305,8 +309,8 @@ def create_app(
                     settings=runtime_settings,
                     store=store,
                 )
-        except ResponsesClientError:
-            raise _ApiFailure(502, "provider_failed", "Question answering failed safely.") from None
+        except ResponsesClientError as error:
+            raise _question_api_failure(error) from None
         except ValueError:
             raise _ApiFailure(
                 503,
@@ -343,6 +347,50 @@ class _ApiFailure(Exception):
         self.code = code
         self.message = message
         super().__init__(message)
+
+
+def _analysis_api_failure(error: ResponsesClientError) -> _ApiFailure:
+    if isinstance(error, ResponsesContextBudgetError):
+        return _ApiFailure(
+            422,
+            "analysis_context_too_large",
+            "The transcript exceeds the configured analysis context limit.",
+        )
+    if isinstance(error, ResponsesOutputValidationError):
+        return _ApiFailure(
+            502,
+            "analysis_output_invalid",
+            (
+                "OpenAI completed the request, but its analysis could not be safely "
+                "validated. Try again."
+            ),
+        )
+    if isinstance(error, ResponsesIncompleteError):
+        return _ApiFailure(
+            502,
+            "provider_incomplete",
+            "OpenAI did not complete the podcast analysis. Try again.",
+        )
+    return _ApiFailure(502, "provider_failed", "The OpenAI analysis request failed safely.")
+
+
+def _question_api_failure(error: ResponsesClientError) -> _ApiFailure:
+    if isinstance(error, (ResponsesOutputValidationError, ResponsesToolLoopError)):
+        return _ApiFailure(
+            502,
+            "answer_output_invalid",
+            (
+                "OpenAI completed the request, but its answer could not be safely "
+                "validated. Try again."
+            ),
+        )
+    if isinstance(error, ResponsesIncompleteError):
+        return _ApiFailure(
+            502,
+            "provider_incomplete",
+            "OpenAI did not complete the answer. Try again.",
+        )
+    return _ApiFailure(502, "provider_failed", "Question answering failed safely.")
 
 
 def _metadata_or_not_found(store: TranscriptStore, run_id: int) -> StoredTranscriptMetadata:

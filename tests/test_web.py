@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Self, cast
 
+import pytest
 from fastapi.testclient import TestClient
 
 from podcast_intelligence.intelligence import EpisodeIntelligenceResult
@@ -22,6 +23,8 @@ from podcast_intelligence.persistence import (
 from podcast_intelligence.responses_client import (
     QuestionResponse,
     ResponsesClientError,
+    ResponsesContextBudgetError,
+    ResponsesOutputValidationError,
     ResponseUsageSummary,
     ToolCallTrace,
 )
@@ -232,6 +235,56 @@ def test_analysis_maps_cache_status_and_refresh(tmp_path: Path) -> None:
     assert captured == [True]
 
 
+@pytest.mark.parametrize(
+    ("error", "status_code", "code", "message"),
+    [
+        (
+            ResponsesOutputValidationError(
+                "SENSITIVE INVALID OUTPUT",
+                response_id="resp_rejected",
+                usage=ResponseUsageSummary(input_tokens=10, output_tokens=2, total_tokens=12),
+            ),
+            502,
+            "analysis_output_invalid",
+            (
+                "OpenAI completed the request, but its analysis could not be safely validated. "
+                "Try again."
+            ),
+        ),
+        (
+            ResponsesContextBudgetError("SENSITIVE CONTEXT DETAIL"),
+            422,
+            "analysis_context_too_large",
+            "The transcript exceeds the configured analysis context limit.",
+        ),
+    ],
+)
+def test_analysis_failures_report_truthful_safe_categories(
+    tmp_path: Path,
+    error: ResponsesClientError,
+    status_code: int,
+    code: str,
+    message: str,
+) -> None:
+    def analyze(*_args: object, **_kwargs: object) -> EpisodeIntelligenceResult:
+        raise error
+
+    app = create_app(
+        settings=_settings(tmp_path),
+        store_factory=_store_factory(_FakeStore()),
+        analyze_service=analyze,
+    )
+
+    response = TestClient(app).post(
+        "/api/episodes/7/analysis",
+        json={"consent": True},
+    )
+
+    assert response.status_code == status_code
+    assert response.json() == {"error": {"code": code, "message": message}}
+    assert "SENSITIVE" not in response.text
+
+
 def test_question_returns_evidence_and_safe_trace_without_arguments(tmp_path: Path) -> None:
     def question(*_args: object, **_kwargs: object) -> QuestionResponse:
         return _question()
@@ -275,6 +328,35 @@ def test_provider_errors_are_redacted(tmp_path: Path) -> None:
     assert response.status_code == 502
     assert response.json()["error"]["code"] == "provider_failed"
     assert "SENSITIVE PROVIDER DETAIL" not in response.text
+
+
+def test_completed_invalid_answer_is_not_reported_as_provider_failure(tmp_path: Path) -> None:
+    def question(*_args: object, **_kwargs: object) -> QuestionResponse:
+        raise ResponsesOutputValidationError(
+            "SENSITIVE INVALID ANSWER",
+            response_id="resp_rejected",
+            usage=ResponseUsageSummary(input_tokens=10, output_tokens=2, total_tokens=12),
+        )
+
+    app = create_app(
+        settings=_settings(tmp_path),
+        store_factory=_store_factory(_FakeStore()),
+        question_service=question,
+    )
+
+    response = TestClient(app).post(
+        "/api/episodes/7/questions",
+        json={"consent": True, "question": "What happened?"},
+    )
+
+    assert response.status_code == 502
+    assert response.json()["error"] == {
+        "code": "answer_output_invalid",
+        "message": (
+            "OpenAI completed the request, but its answer could not be safely validated. Try again."
+        ),
+    }
+    assert "SENSITIVE" not in response.text
 
 
 def test_openapi_contains_only_the_public_contract(tmp_path: Path) -> None:

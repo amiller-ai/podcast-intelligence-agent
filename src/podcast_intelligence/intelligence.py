@@ -19,6 +19,7 @@ from podcast_intelligence.responses_client import (
     PodcastResponsesClient,
     QuestionResponse,
     ResponsesClientError,
+    ResponsesResultError,
 )
 from podcast_intelligence.retrieval import TranscriptTools
 from podcast_intelligence.settings import Settings
@@ -85,10 +86,15 @@ def analyze_episode(
             analysis=response.analysis,
         )
     except ResponsesClientError as error:
+        response_error = error if isinstance(error, ResponsesResultError) else None
         store.mark_analysis_failed(
             run_id,
             error_code=type(error).__name__,
             safe_message=str(error),
+            response_id=None if response_error is None else response_error.response_id,
+            input_tokens=None if response_error is None else response_error.usage.input_tokens,
+            output_tokens=None if response_error is None else response_error.usage.output_tokens,
+            total_tokens=None if response_error is None else response_error.usage.total_tokens,
         )
         raise
     except (PersistenceError, ValueError) as error:

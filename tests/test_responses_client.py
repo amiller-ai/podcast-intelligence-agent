@@ -2,7 +2,7 @@ from typing import cast
 from unittest.mock import Mock
 
 import pytest
-from openai import OpenAI
+from openai import OpenAI, OpenAIError
 from openai.types.responses import (
     Response,
     ResponseFunctionToolCall,
@@ -15,7 +15,10 @@ from podcast_intelligence.intelligence_models import TranscriptSegment
 from podcast_intelligence.persistence import StoredTranscript
 from podcast_intelligence.responses_client import (
     PodcastResponsesClient,
-    ResponsesClientError,
+    ResponsesContextBudgetError,
+    ResponsesIncompleteError,
+    ResponsesOutputValidationError,
+    ResponsesProviderRequestError,
     ResponsesToolLoopError,
     TextResponse,
 )
@@ -118,6 +121,8 @@ def _mock_tools() -> Mock:
     tools = Mock(spec=TranscriptTools)
     tools.transcript = Mock(spec=StoredTranscript)
     tools.transcript.transcript_id = 1
+    tools.transcript.episode_id = 1
+    tools.transcript.episode_title = "Synthetic episode"
     tools.segments = (
         TranscriptSegment(
             segment_id="a" * 64,
@@ -346,16 +351,30 @@ def test_incomplete_or_schema_invalid_final_response_fails_closed() -> None:
         Settings.model_validate({"openai_api_key": "test-key"}),
         client=cast(OpenAI, sdk_client),
     )
-    with pytest.raises(ResponsesClientError, match="incomplete"):
+    with pytest.raises(ResponsesIncompleteError, match="incomplete") as incomplete:
         client.answer_question("Question", _mock_tools())
+    assert incomplete.value.response_id == "resp_incomplete"
 
     sdk_client.responses.create.return_value = _response(
         "resp_invalid",
         [_message("msg_invalid")],
         output_text='{"answer":"missing fields"}',
     )
-    with pytest.raises(ResponsesClientError, match="evidence validation"):
+    with pytest.raises(ResponsesOutputValidationError, match="evidence validation"):
         client.answer_question("Question", _mock_tools())
+
+
+def test_episode_analysis_classifies_provider_request_failure() -> None:
+    sdk_client = Mock(spec=OpenAI)
+    sdk_client.responses.create.side_effect = OpenAIError("SENSITIVE PROVIDER DETAIL")
+    client = PodcastResponsesClient(
+        Settings.model_validate({"openai_api_key": "test-key"}),
+        client=cast(OpenAI, sdk_client),
+    )
+    tools = _mock_tools()
+
+    with pytest.raises(ResponsesProviderRequestError, match="provider request failed"):
+        client.create_episode_analysis(tools.transcript, tools.segments)
 
 
 def test_structured_episode_analysis_uses_strict_schema_and_exact_evidence() -> None:
@@ -443,8 +462,10 @@ def test_structured_episode_analysis_rejects_inexact_evidence_and_context_overfl
         Settings.model_validate({"openai_api_key": "test-key"}),
         client=cast(OpenAI, sdk_client),
     )
-    with pytest.raises(ResponsesClientError, match="evidence validation"):
+    with pytest.raises(ResponsesOutputValidationError, match="evidence validation") as raised:
         client.create_episode_analysis(transcript, (segment,))
+    assert raised.value.response_id == "resp_invalid_analysis"
+    assert raised.value.usage.total_tokens == 0
 
     bounded_client = PodcastResponsesClient(
         Settings.model_validate(
@@ -452,5 +473,5 @@ def test_structured_episode_analysis_rejects_inexact_evidence_and_context_overfl
         ),
         client=cast(OpenAI, sdk_client),
     )
-    with pytest.raises(ResponsesClientError, match="context budget"):
+    with pytest.raises(ResponsesContextBudgetError, match="context budget"):
         bounded_client.create_episode_analysis(transcript, (segment,))

@@ -269,3 +269,79 @@ def test_analysis_evidence_alignment_is_conservative_and_source_exact() -> None:
             transcript_id=8,
             segments=(segment,),
         )
+
+
+def test_analysis_evidence_rebinds_one_unique_source_segment() -> None:
+    text = ("Intro filler words. " * 5) + "A unique source quote appears here."
+    segments = segment_transcript_text(
+        transcript_id=8,
+        episode_id=13,
+        content_hash=_content_hash(text),
+        text=text,
+        max_chars=64,
+    )
+    source_segment = next(segment for segment in segments if "unique source" in segment.text)
+    wrong_segment = next(segment for segment in segments if segment != source_segment)
+    evidence = AnalysisEvidence(
+        segment_id=wrong_segment.segment_id,
+        quote="a UNIQUE source quote appears here",
+    )
+    item = EvidenceBackedItem(text="Supported.", evidence=[evidence])
+    analysis = EpisodeAnalysis(
+        summary=item,
+        topics=[],
+        people=[],
+        claims=[],
+        actionable_insights=[],
+        limitations=[],
+    )
+
+    aligned = canonicalize_analysis_evidence(
+        analysis,
+        transcript_id=8,
+        segments=segments,
+    )
+
+    assert aligned.summary.evidence == [
+        AnalysisEvidence(
+            segment_id=source_segment.segment_id,
+            quote="A unique source quote appears here",
+        )
+    ]
+    validate_analysis_evidence(aligned, transcript_id=8, segments=segments)
+
+
+def test_analysis_evidence_rebinding_rejects_ambiguous_cross_segment_quote() -> None:
+    text = (
+        "Repeated exact words live here. "
+        + ("Unrelated filler words. " * 5)
+        + "Repeated exact words live elsewhere."
+    )
+    segments = segment_transcript_text(
+        transcript_id=8,
+        episode_id=13,
+        content_hash=_content_hash(text),
+        text=text,
+        max_chars=64,
+    )
+    assert sum("Repeated exact words live" in segment.text for segment in segments) == 2
+    evidence = AnalysisEvidence(
+        segment_id="f" * 64,
+        quote="repeated exact words live",
+    )
+    item = EvidenceBackedItem(text="Ambiguous.", evidence=[evidence])
+    analysis = EpisodeAnalysis(
+        summary=item,
+        topics=[],
+        people=[],
+        claims=[],
+        actionable_insights=[],
+        limitations=[],
+    )
+
+    with pytest.raises(EvidenceValidationError, match="unique"):
+        canonicalize_analysis_evidence(
+            analysis,
+            transcript_id=8,
+            segments=segments,
+        )

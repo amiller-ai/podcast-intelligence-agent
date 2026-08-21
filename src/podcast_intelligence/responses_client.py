@@ -63,6 +63,14 @@ class ResponsesClientError(RuntimeError):
     """Base class for safe application-owned Responses failures."""
 
 
+class ResponsesProviderRequestError(ResponsesClientError):
+    """Raised when the provider request itself fails."""
+
+
+class ResponsesContextBudgetError(ResponsesClientError):
+    """Raised before a request that exceeds the configured context budget."""
+
+
 class ResponsesToolLoopError(ResponsesClientError):
     """Raised when tool-loop lineage, policy, or bounds are violated."""
 
@@ -81,6 +89,29 @@ class ResponseUsageSummary:
             output_tokens=self.output_tokens + other.output_tokens,
             total_tokens=self.total_tokens + other.total_tokens,
         )
+
+
+class ResponsesResultError(ResponsesClientError):
+    """Base for safe failures after the provider returned a response object."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        response_id: str,
+        usage: ResponseUsageSummary,
+    ) -> None:
+        super().__init__(message)
+        self.response_id = response_id
+        self.usage = usage
+
+
+class ResponsesIncompleteError(ResponsesResultError):
+    """Raised when the provider response did not complete."""
+
+
+class ResponsesOutputValidationError(ResponsesResultError):
+    """Raised when a completed response cannot pass local output validation."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,10 +208,14 @@ class PodcastResponsesClient:
                     store=False,
                 )
             except OpenAIError as error:
-                raise ResponsesClientError("Responses provider request failed") from error
+                raise ResponsesProviderRequestError("Responses provider request failed") from error
 
             if response.status != "completed":
-                raise ResponsesClientError("Responses provider returned an incomplete result")
+                raise ResponsesIncompleteError(
+                    "Responses provider returned an incomplete result",
+                    response_id=response.id,
+                    usage=_usage_from_response(response),
+                )
             response_ids.append(response.id)
             item_types = tuple(str(item.type) for item in response.output)
             output_item_types.append(item_types)
@@ -201,7 +236,11 @@ class PodcastResponsesClient:
                     )
                     tools.validate_answer(answer)
                 except (ValidationError, ValueError, RetrievalToolError) as error:
-                    raise ResponsesClientError("final answer failed evidence validation") from error
+                    raise ResponsesOutputValidationError(
+                        "final answer failed evidence validation",
+                        response_id=response.id,
+                        usage=usage,
+                    ) from error
                 return QuestionResponse(
                     response_id=response.id,
                     model=response.model,
@@ -251,7 +290,9 @@ class PodcastResponsesClient:
             for segment in segments
         )
         if len(transcript_input) > self._settings.intelligence_max_analysis_chars:
-            raise ResponsesClientError("transcript exceeds the configured analysis context budget")
+            raise ResponsesContextBudgetError(
+                "transcript exceeds the configured analysis context budget"
+            )
         reasoning: Reasoning = {"effort": self._settings.openai_reasoning_effort}
         try:
             response = self._client.responses.create(
@@ -275,9 +316,13 @@ class PodcastResponsesClient:
                 store=False,
             )
         except OpenAIError as error:
-            raise ResponsesClientError("Responses provider request failed") from error
+            raise ResponsesProviderRequestError("Responses provider request failed") from error
         if response.status != "completed":
-            raise ResponsesClientError("Responses provider returned an incomplete analysis")
+            raise ResponsesIncompleteError(
+                "Responses provider returned an incomplete analysis",
+                response_id=response.id,
+                usage=_usage_from_response(response),
+            )
         try:
             analysis = EpisodeAnalysis.model_validate_json(response.output_text)
             analysis = canonicalize_analysis_evidence(
@@ -291,7 +336,11 @@ class PodcastResponsesClient:
                 segments=segments,
             )
         except (ValidationError, ValueError) as error:
-            raise ResponsesClientError("episode analysis failed evidence validation") from error
+            raise ResponsesOutputValidationError(
+                "episode analysis failed evidence validation",
+                response_id=response.id,
+                usage=_usage_from_response(response),
+            ) from error
         return EpisodeAnalysisResponse(
             response_id=response.id,
             model=response.model,

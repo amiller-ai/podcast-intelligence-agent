@@ -190,7 +190,7 @@ def canonicalize_question_evidence(
     transcript_id: int,
     segments: tuple[TranscriptSegment, ...],
 ) -> QuestionAnswer:
-    """Align punctuation-only quote drift to one unambiguous source substring."""
+    """Align a quote to one unambiguous source segment and exact substring."""
 
     return answer.model_copy(
         update={
@@ -226,7 +226,7 @@ def canonicalize_analysis_evidence(
     transcript_id: int,
     segments: tuple[TranscriptSegment, ...],
 ) -> EpisodeAnalysis:
-    """Align punctuation-only evidence drift without accepting paraphrases."""
+    """Align evidence to unambiguous source segments without accepting paraphrases."""
 
     return analysis.model_copy(
         update={
@@ -315,19 +315,42 @@ def _canonicalize_evidence(
     canonical: list[AnalysisEvidence] = []
     for evidence in evidence_items:
         segment = by_id.get(evidence.segment_id)
-        if segment is None:
-            raise EvidenceValidationError("evidence references an unknown segment")
-        if segment.transcript_id != transcript_id:
-            raise EvidenceValidationError("evidence does not belong to the selected transcript")
-        if evidence.quote in segment.text:
+        if (
+            segment is not None
+            and segment.transcript_id == transcript_id
+            and evidence.quote in segment.text
+        ):
             canonical.append(evidence)
             continue
-        aligned_quote = _align_unique_word_sequence(evidence.quote, segment.text)
-        if aligned_quote is None:
-            raise EvidenceValidationError(
-                "evidence quote could not be aligned to one exact segment substring"
+
+        exact_segments = [
+            candidate
+            for candidate in segments
+            if candidate.transcript_id == transcript_id and evidence.quote in candidate.text
+        ]
+        if len(exact_segments) == 1:
+            canonical.append(
+                evidence.model_copy(update={"segment_id": exact_segments[0].segment_id})
             )
-        canonical.append(evidence.model_copy(update={"quote": aligned_quote}))
+            continue
+
+        aligned = [
+            (candidate, aligned_quote)
+            for candidate in segments
+            if candidate.transcript_id == transcript_id
+            for aligned_quote in [_align_unique_word_sequence(evidence.quote, candidate.text)]
+            if aligned_quote is not None
+        ]
+        if len(aligned) != 1:
+            raise EvidenceValidationError(
+                "evidence quote could not be aligned to one unique exact segment substring"
+            )
+        aligned_segment, aligned_quote = aligned[0]
+        canonical.append(
+            evidence.model_copy(
+                update={"segment_id": aligned_segment.segment_id, "quote": aligned_quote}
+            )
+        )
     return canonical
 
 

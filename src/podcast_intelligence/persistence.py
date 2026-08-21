@@ -1135,15 +1135,29 @@ class TranscriptStore:
         *,
         error_code: str,
         safe_message: str,
+        response_id: str | None = None,
+        input_tokens: int | None = None,
+        output_tokens: int | None = None,
+        total_tokens: int | None = None,
     ) -> None:
         with self.transaction() as connection:
             cursor = connection.execute(
                 """
                 UPDATE analysis_runs
-                SET status = 'failed', error_code = ?, error_message = ?, completed_at = ?
+                SET status = 'failed', error_code = ?, error_message = ?, response_id = ?,
+                    input_tokens = ?, output_tokens = ?, total_tokens = ?, completed_at = ?
                 WHERE id = ? AND status IN ('pending', 'running')
                 """,
-                (error_code, safe_message, _utc_now(), run_id),
+                (
+                    error_code,
+                    safe_message,
+                    response_id,
+                    input_tokens,
+                    output_tokens,
+                    total_tokens,
+                    _utc_now(),
+                    run_id,
+                ),
             )
             if cursor.rowcount != 1:
                 raise PersistenceError("analysis run cannot be marked failed")

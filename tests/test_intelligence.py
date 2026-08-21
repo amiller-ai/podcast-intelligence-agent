@@ -29,6 +29,7 @@ from podcast_intelligence.responses_client import (
     PodcastResponsesClient,
     QuestionResponse,
     ResponsesClientError,
+    ResponsesOutputValidationError,
     ResponseUsageSummary,
 )
 from podcast_intelligence.settings import Settings
@@ -273,8 +274,10 @@ def test_refresh_and_model_change_preserve_prior_successful_history(tmp_path: Pa
 def test_provider_or_evidence_failure_records_safe_failed_run(tmp_path: Path) -> None:
     path = tmp_path / "analysis-failure.db"
     client = Mock(spec=PodcastResponsesClient)
-    client.create_episode_analysis.side_effect = ResponsesClientError(
-        "episode analysis failed evidence validation"
+    client.create_episode_analysis.side_effect = ResponsesOutputValidationError(
+        "episode analysis failed evidence validation",
+        response_id="resp_rejected",
+        usage=ResponseUsageSummary(input_tokens=100, output_tokens=25, total_tokens=125),
     )
     with TranscriptStore(path) as store:
         transcript_run_id = _persist_transcript(store)
@@ -291,10 +294,18 @@ def test_provider_or_evidence_failure_records_safe_failed_run(tmp_path: Path) ->
 
     with sqlite3.connect(path) as connection:
         row = connection.execute(
-            "SELECT status, error_code, error_message FROM analysis_runs"
+            """
+            SELECT status, error_code, error_message, response_id,
+                input_tokens, output_tokens, total_tokens
+            FROM analysis_runs
+            """
         ).fetchone()
     assert row == (
         "failed",
-        "ResponsesClientError",
+        "ResponsesOutputValidationError",
         "episode analysis failed evidence validation",
+        "resp_rejected",
+        100,
+        25,
+        125,
     )
